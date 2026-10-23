@@ -1,0 +1,15 @@
+# Sortie de compilation arduino-cli
+build/
+
+# Journaux
+*.log
+build_log.txt
+
+# Artefacts laisses par des commandes shell ratees (a supprimer)
+nnn*/
+string/
+
+# Systeme
+Thumbs.db
+desktop.ini
+.DS_Store
