@@ -10,8 +10,18 @@ Le projet tourne sur une carte **Waveshare ESP32-S3-Touch-LCD-4.3B** (dalle
 couleurs 800 × 480, tactile capacitif GT911, horloge PCF85063A) associée à un
 capteur **BME280** sur le bus I²C de la carte.
 
+## Aperçu
+
+| Écran de la carte | Interface web |
+|:---:|:---:|
+| <img src="docs/ecran_de_la_carte.jpg" alt="Baromètre en fonctionnement : cadrans humidité et température, historique de pression" width="400"> | <img src="docs/page_web.png" alt="Page web : valeurs courantes et historique de pression" width="400"> |
+
+*La même mesure des deux côtés : les cadrans et l'historique de pression sur la
+carte, les valeurs en direct et le graphique sur la page web.*
+
 ## Sommaire
 
+- [Aperçu](#aperçu)
 - [Fonctionnalités](#fonctionnalités)
 - [Matériel](#matériel)
 - [Compilation](#compilation)
@@ -273,6 +283,7 @@ Definition.h                        constantes : délais, plages, numéros de pa
 esp_panel_board_supported_conf.h    sélection de la carte pour ESP32_Display_Panel
 build_opt.h                         option de compilation (canvas en PSRAM)
 extras/TFT_eSPI_User_Setup.h        configuration TFT_eSPI utilisée
+docs/                               captures d'ecran reprises par ce README
 README.md / README.fr.md            cette documentation, en anglais et en français
 ```
 

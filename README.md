@@ -10,8 +10,18 @@ The project runs on a **Waveshare ESP32-S3-Touch-LCD-4.3B** board (800 × 480
 colour panel, GT911 capacitive touch, PCF85063A clock) with a **BME280** sensor
 on the board's I²C bus.
 
+## Screenshots
+
+| Device screen | Web interface |
+|:---:|:---:|
+| <img src="docs/ecran_de_la_carte.jpg" alt="Barometer running: humidity and temperature gauges, pressure history" width="400"> | <img src="docs/page_web.png" alt="Web page: live values and pressure history" width="400"> |
+
+*The same reading on both sides: gauges and pressure history on the device, live
+values and chart on the web page.*
+
 ## Contents
 
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Hardware](#hardware)
 - [Building](#building)
@@ -267,6 +277,7 @@ Definition.h                        constants: delays, ranges, page numbers
 esp_panel_board_supported_conf.h    board selection for ESP32_Display_Panel
 build_opt.h                         build option (canvas in PSRAM)
 extras/TFT_eSPI_User_Setup.h        TFT_eSPI configuration used
+docs/                               screenshots used by this documentation
 README.md / README.fr.md            this documentation, in English and French
 ```
 
