@@ -70,8 +70,6 @@ public:
   uint8_t  getRotation() { return 0; }
 
   uint8_t  getTouch(uint16_t *x, uint16_t *y, uint16_t threshold = 600);
-  void     setTouch(uint16_t *calData) {}                     // GT911 : pas de calibration
-  void     calibrateTouch(uint16_t *parameters, uint32_t color_fg, uint32_t color_bg, uint8_t size) {}
 
   void     flush();                                           // canvas -> framebuffer de la dalle
   void     setBacklight(bool on);

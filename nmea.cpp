@@ -78,8 +78,8 @@ void nmea0183Output(int32_t mode, int8_t humidity, float temp, float pres)
   // n) Checksum
 
   // Example:
-  // $IIXDR,C,19.52,C,TempAir*19
-  // $IIXDR,P,1.02481,B,Barometer*29
+  // $WIXDR,C,19.52,C,TempAir*07
+  // $WIXDR,P,1.02481,B,Barometer*37
 
   // Examples of NMEA0183 XDR Transducer Types
   // Type	Meaning
@@ -102,7 +102,7 @@ void nmea0183Output(int32_t mode, int8_t humidity, float temp, float pres)
   // P	Percent
   //====================================================
 
-  sprintf(buffer, "$IIXDR,H,%d.0,P,AirHumidity,C,%d.%01d,C,AirTemp,P,%d.%04d,B,Barometer", humidity, temp1, temp2, pres1, pres2);
+  sprintf(buffer, "$WIXDR,H,%d.0,P,AirHumidity,C,%d.%01d,C,AirTemp,P,%d.%04d,B,Barometer", humidity, temp1, temp2, pres1, pres2);
   NMEA0183_PORT.print(buffer);
 
   for (int i = 0; i < strlen(buffer); i++)

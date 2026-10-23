@@ -15,7 +15,7 @@
 //  le pilote legacy (tNMEA2000_esp32). L'objet NMEA2000 est cree ici.
 //
 //  PGN emis (1 Hz, decales de 50 ms les uns des autres) :
-//    130312  Temperature
+//    130316  Temperature (extended range)
 //    130313  Humidite
 //    130314  Pression atmospherique
 //=====================================================================
@@ -59,7 +59,7 @@ static uint32_t s_sent    = 0;     // PGN acceptes par le controleur
 static uint32_t s_failed  = 0;     // PGN refuses (file pleine, bus off...)
 
 // Messages annonces sur le bus
-const unsigned long TransmitMessages[] PROGMEM = {130312L, // Temperature
+const unsigned long TransmitMessages[] PROGMEM = {130316L, // Temperature
                                                   130313L, // Humidite
                                                   130314L, // Pression
                                                   0
@@ -195,7 +195,7 @@ void SendN2kTemperature(float temp)
   if (IsTimeToUpdate(SlowDataUpdated)) {
     SetNextUpdate(SlowDataUpdated, SlowDataUpdatePeriod);
 
-    SetN2kPGN130312(N2kMsg, 0, 0, N2kts_InsideTemperature, CToKelvin(temp), N2kDoubleNA);
+    SetN2kPGN130316(N2kMsg, 0, 0, N2kts_InsideTemperature, CToKelvin(temp), N2kDoubleNA);
 
     n2kSend(N2kMsg);
   }

@@ -38,7 +38,7 @@ values and chart on the web page.*
 
 ### Display
 
-- Three analogue gauges: pressure (980 → 1030 hPa), temperature and humidity.
+- Three analogue gauges: pressure, temperature and humidity.
 - Information bar: date, time and instantaneous pressure.
 - Three full-screen history pages (humidity, temperature, pressure), opened by
   tapping the matching gauge and closed by tapping anywhere. Tapping the
@@ -51,6 +51,8 @@ values and chart on the web page.*
   returns to the measurement page.
 - Touch menu: temperature unit, history window, NMEA configuration, date and
   time, display restart, exit.
+- The pressure scale is floating. At startup it spans 980 to 1030 mb, with the
+  1013 mb pressure (normal at sea level) shown by the green line.
 
 ### Web interface
 
@@ -67,9 +69,9 @@ values and chart on the web page.*
 
 ### NMEA
 
-- **NMEA 2000** on the CAN bus: PGN 130312 (temperature), 130313 (humidity) and
+- **NMEA 2000** on the CAN bus: PGN 130316 (temperature), 130313 (humidity) and
   130314 (pressure), sent once per second.
-- **NMEA 0183** on the RS485 port: `$IIXDR` sentence (humidity, temperature,
+- **NMEA 0183** on the RS485 port: `$WIXDR` sentence (humidity, temperature,
   pressure) every 10 s, baud rate selectable from 4800 to 38400, or output
   disabled.
 - NMEA values are always in metric units (°C, %, bar), even when the display is
@@ -248,13 +250,13 @@ Saved in NVS (namespace `baro`) and reloaded at boot:
 
 | Output | Medium | Content | Period |
 |---|---|---|---|
-| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) and 16 (RX) | PGN 130312 (temperature), 130313 (humidity), 130314 (pressure) | 1 s |
-| NMEA 0183 | RS485, GPIO 44 (TX) and 43 (RX) | `$IIXDR`: humidity, air temperature, barometric pressure | 10 s |
+| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) and 16 (RX) | PGN 130316 (temperature, extended range), 130313 (humidity), 130314 (pressure) | 1 s |
+| NMEA 0183 | RS485, GPIO 44 (TX) and 43 (RX) | `$WIXDR`: humidity, air temperature, barometric pressure | 10 s |
 
 Example NMEA 0183 sentence:
 
 ```
-$IIXDR,H,61.0,P,AirHumidity,C,19.2,C,AirTemp,P,1.0281,B,Barometer*4F
+$WIXDR,H,61.0,P,AirHumidity,C,19.2,C,AirTemp,P,1.0281,B,Barometer*03
 ```
 
 ## Project structure
@@ -269,10 +271,9 @@ webui.cpp / webui.h                 HTTP server, HTML pages, JSON API
 nmea.cpp / nmea.h                   NMEA 0183 output (RS485)
 nmea2k.cpp / nmea2k.h               NMEA 2000 output (CAN / TWAI)
 rtc_clock.cpp / rtc_clock.h         PCF85063A, DS3231 or software clock
-bme280_local.cpp / bme280_local.h   BME280 driver
+bme280_local.cpp / bme280_local.h   in-house BME280 driver (I2C, Bosch formulas)
 i2c_bus.cpp / i2c_bus.h             shared I²C bus (legacy driver, required by ESP32_Display_Panel)
 datetime_local.h                    minimal DateTime type (avoids the RTClib dependency)
-calibrate.cpp                       touch calibration
 Definition.h                        constants: delays, ranges, page numbers
 esp_panel_board_supported_conf.h    board selection for ESP32_Display_Panel
 build_opt.h                         build option (canvas in PSRAM)
@@ -308,6 +309,12 @@ designed for ASCII, so the on-screen texts avoid accented characters.
 **Bilingual web interface.** Each page is written once: texts are replaced at
 send time (main page) or read from a French/English table for the pages built
 dynamically. No page is duplicated in the binary.
+
+**In-house BME280 driver.** The sensor is read by a small dedicated driver (I2C
+only): the bus is owned by the "legacy" ESP-IDF driver installed by
+ESP32_Display_Panel, with which `Wire` cannot coexist. The compensation
+formulas are those published by Bosch Sensortec (BSD-3-Clause, copyright kept
+in `bme280_local.cpp`); the rest of the driver is under MIT, like the project.
 
 ## License
 

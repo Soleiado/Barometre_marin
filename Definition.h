@@ -10,6 +10,8 @@
 
 #define NOPRESSHUM        -1      // mbar
 #define NOTEMP            ((int16_t)-32768)
+
+// Ces 3 valeurs ne servent qu'à determiner l'echelle initiale de l'axe des Y pour les pressions
 #define MINPRESSURE       980     // mbar (plage affichee : 1030 -> 980)
 #define MIDPRESSURE       1005    // mbar
 #define MAXPRESSURE       1030    // mbar

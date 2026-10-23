@@ -147,9 +147,9 @@ static const WebText kText[] = {
   { "Port RS485 (NMEA 0183)",                      "RS485 port (NMEA 0183)" },
   { "NMEA 2000 seul (CAN)",                        "NMEA 2000 only (CAN)" },
   { " bauds",                                      " baud" },
-  { "Le bus CAN (NMEA 2000) emet dans tous les cas les PGN 130312, 130313 et "
+  { "Le bus CAN (NMEA 2000) emet dans tous les cas les PGN 130316, 130313 et "
     "130314, une fois par seconde.",
-    "The CAN bus (NMEA 2000) always transmits PGNs 130312, 130313 and 130314, "
+    "The CAN bus (NMEA 2000) always transmits PGNs 130316, 130313 and 130314, "
     "once per second." },
   { "Reseau WiFi",                                 "WiFi network" },
   { "Reseau enregistre :",                         "Saved network:" },
@@ -1095,6 +1095,7 @@ void webInit()
     ESP_LOGI(TAG, "WiFi : aucun reseau enregistre, demarrage du point d'acces.");
     startAccessPoint();
   }
+
 
   server.on("/",            handleRoot);
   server.on("/api/data",    handleData);

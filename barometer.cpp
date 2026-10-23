@@ -7,33 +7,6 @@
 #include "Definition.h"
 #include "barometer.h"     // geometrie du bandeau d'informations (INFO_BAND_*)
 
-// Le graphique et le bandeau etaient des sprites 4 bits avec palette.
-// Ils passent en 16 bits pour pouvoir etre copies dans le canvas de
-// l'ecran (pushToSprite n'accepte que des profondeurs identiques) : les
-// anciens indices de palette sont donc remplaces par les couleurs
-// TFT_eSPI correspondantes.
-#define BLACK       TFT_BLACK
-#define NAVY        TFT_NAVY
-#define DARKGREEN   TFT_DARKGREEN
-#define DARKCYAN    TFT_DARKCYAN
-#define MAROON      TFT_MAROON
-#define PURPLE      TFT_PURPLE
-#define PINK        TFT_PINK
-#define LIGHTGREY   TFT_LIGHTGREY
-#define DARKGREY    TFT_DARKGREY
-#define BLUE        TFT_BLUE
-#define GREEN       TFT_GREEN
-#define ORANGE      TFT_ORANGE
-#define RED         TFT_RED
-#define MAGENTA     TFT_MAGENTA
-#define WHITE       TFT_WHITE
-
-int8_t  history_mode = MODE_06H;
-
-int16_t max_pressure = MAXPRESSURE;
-int16_t mid_pressure = MIDPRESSURE;
-int16_t min_pressure = MINPRESSURE;
-
 //---------------------------------------------------------------------
 // Geometrie du graphique et de ses bandeaux (canvas 800x480).
 //
@@ -61,6 +34,17 @@ int16_t min_pressure = MINPRESSURE;
 #define INFO_Y        INFO_BAND_Y                          // bandeau date / heure / pression
 #define INFO_H        INFO_BAND_H
 
+int8_t  history_mode = MODE_06H;
+
+// MAX, MID, MINPRESSURE représentent les limites du graphique de pressions au démarrage.
+// L'échelle est flottante et s'adapte en fonction de la pression pour ne representer qu'un interval de 50mb
+int16_t max_pressure = MAXPRESSURE;
+int16_t mid_pressure = MIDPRESSURE;
+int16_t min_pressure = MINPRESSURE;
+
+// Valeurs affichées au démarrage. Ces valeurs pevent changer, car l'echelle est flottante
+char    label[HIST_LABELS][5] = {"1030", "1020", "1010", "1000", "0990", "0980"};
+
 int16_t normal_pressure_y = HIST_TOP;
 
 int16_t meter_data[MAXHOURTIMESLOT];
@@ -79,8 +63,6 @@ int16_t meter_data[MAXHOURTIMESLOT];
 static int16_t hum_data     [4][MAXHOURTIMESLOT];
 static int16_t temp_data    [4][MAXHOURTIMESLOT];
 static int16_t pressure_data[4][MAXHOURTIMESLOT];
-
-char    label[HIST_LABELS][5] = {"1030", "1020", "1010", "1000", "0990", "0980"};
 
 TFT_eSprite *graph;
 TFT_eSprite *misc;    // bandeau de titre
@@ -367,15 +349,15 @@ void drawPressureHistBg()
   graph->fillSprite(TFT_WHITE);
 
   // Cadre en degrade (8 px d'epaisseur)
-  graph->fillRectHGradient(           0,  0,  8, HIST_H, LIGHTGREY, DARKGREY);
-  graph->fillRectHGradient(HIST_W - 8,  0,  8, HIST_H, LIGHTGREY, DARKGREY);
-  graph->fillRectVGradient(           0,  0, HIST_W,     8, DARKGREY, LIGHTGREY);
-  graph->fillRectVGradient(           0, HIST_H - 8, HIST_W, 8, DARKGREY, LIGHTGREY);
+  graph->fillRectHGradient(           0,  0,  8, HIST_H, TFT_LIGHTGREY, TFT_DARKGREY);
+  graph->fillRectHGradient(HIST_W - 8,  0,  8, HIST_H, TFT_LIGHTGREY, TFT_DARKGREY);
+  graph->fillRectVGradient(           0,  0, HIST_W,     8, TFT_DARKGREY, TFT_LIGHTGREY);
+  graph->fillRectVGradient(           0, HIST_H - 8, HIST_W, 8, TFT_DARKGREY, TFT_LIGHTGREY);
 
   // Ligne verte : pression standard (1013 hPa)
   if (normal_pressure_y > HIST_TOP - 6 && normal_pressure_y < HIST_BOTTOM + 6)
     graph->drawWideLine(HIST_LEFT - 10, normal_pressure_y, HIST_RIGHT + 10, normal_pressure_y,
-                        6, GREEN, GREEN);
+                        6, TFT_GREEN, TFT_GREEN);
 
   // Libelles de pression : police vectorielle, un peu plus grande et plus
   // lisible que la police bitmap 2 utilisee a l'origine.
@@ -386,19 +368,19 @@ void drawPressureHistBg()
     int16_t y = HIST_TOP + i * HIST_PPMB;
 
     if (i % 10 == 0) {
-      graph->drawWideLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, 3, DARKGREY, DARKGREY);
+      graph->drawWideLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, 3, TFT_DARKGREY, TFT_DARKGREY);
 
-      graph->setTextColor(DARKGREY);
+      graph->setTextColor(TFT_DARKGREY);
       graph->setTextDatum(CR_DATUM);
       graph->drawString(label[i / 10], HIST_LEFT - 14, y);
     } else {
-      graph->drawLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, LIGHTGREY);
+      graph->drawLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, TFT_LIGHTGREY);
     }
   }
 
   // Lignes verticales : une tous les deux points
   for (int x = HIST_LEFT; x <= HIST_RIGHT; x += 2 * HIST_STEP)
-    graph->drawLine(x, HIST_TOP - 10, x, HIST_BOTTOM, BLACK);
+    graph->drawLine(x, HIST_TOP - 10, x, HIST_BOTTOM, TFT_BLACK);
 }
 
 //====================================================
@@ -438,11 +420,11 @@ void drawPressureHist(float pres,  DateTime& now)
     if (meter_data[i] == NOPRESSHUM)
       continue;
 
-    uint32_t color = NAVY;
+    uint32_t color = TFT_NAVY;
 
     if (i > 0 && meter_data[i - 1] != NOPRESSHUM) {
       if (meter_data[i - 1] - meter_data[i] >= drop_pressure * HIST_PPMB)
-        color = RED;
+        color = TFT_RED;
 
       graph->drawLine(x - HIST_STEP, meter_data[i - 1], x, meter_data[i], color);
     }
@@ -450,7 +432,7 @@ void drawPressureHist(float pres,  DateTime& now)
     graph->fillCircle(x, meter_data[i], 6, color);
   }
 
-  graph->drawRect(0, 0, HIST_W - 1, HIST_H - 1, BLACK);
+  graph->drawRect(0, 0, HIST_W - 1, HIST_H - 1, TFT_BLACK);
   graph->pushToSprite(static_cast<TFT_eSprite *>(s_tft), HIST_X, HIST_Y);
 
   // Bandeau de titre

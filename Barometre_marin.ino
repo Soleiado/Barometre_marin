@@ -45,12 +45,6 @@ bool            bme280_ok = false;
 bool            guiNeedsFlush = false;
 
 //===========================================
-// function definition
-//===========================================
-
-void touch_calibrate(TFT_eSPI &tft);
-
-//===========================================
 // Zones de touche de la page de mesure
 //
 // Chaque widget de la page de mesure occupe une zone rectangulaire :
@@ -133,7 +127,7 @@ extern int8_t   history_mode;
 // Redessin demande par l'interface web (unite ou heure modifiee)
 volatile bool   uiRefresh    = false;
 
-#define HUMIDITY_CORRECTION(x)  ((int8_t)((float)x*43.0/3100.0));
+#define HUMIDITY_CORRECTION(x)  ((int16_t)((x) / 100))
 
 //------------------------------------------------------------------------
 
@@ -420,7 +414,6 @@ void setup(void)
   //-- Ecran, tactile et retroeclairage
   tft.init();
   tft.setRotation(3);          // sans effet : le canvas est toujours dans le bon sens
-  touch_calibrate(tft);        // GT911 : pas de calibration necessaire
 
   //-- Horloge : DS3231 externe, PCF85063A de la carte, sinon horloge logicielle
   rtcClockInit();

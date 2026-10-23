@@ -38,7 +38,7 @@ carte, les valeurs en direct et le graphique sur la page web.*
 
 ### Écran
 
-- Trois cadrans analogiques : pression (980 → 1030 hPa), température et humidité.
+- Trois cadrans analogiques : pression, température et humidité.
 - Bandeau d'information : date, heure et pression instantanée.
 - Trois pages d'historique plein écran (humidité, température, pression),
   ouvertes d'un appui sur le cadran correspondant, refermées d'un appui
@@ -54,6 +54,7 @@ carte, les valeurs en direct et le graphique sur la page web.*
   et revient à la page de mesure.
 - Menu tactile : unité de température, fenêtre d'historique, configuration
   NMEA, date et heure, redémarrage de l'écran, sortie.
+- L'echelle des pressions est flottante. Lors du démarrage, elle couvre de 980 à 1030mb, avec la pression 1013 (normale au niveau de la mer) indiquée par la ligne verte. 
 
 ### Interface web
 
@@ -71,9 +72,9 @@ carte, les valeurs en direct et le graphique sur la page web.*
 
 ### NMEA
 
-- **NMEA 2000** sur le bus CAN : PGN 130312 (température), 130313 (humidité) et
+- **NMEA 2000** sur le bus CAN : PGN 130316 (température), 130313 (humidité) et
   130314 (pression), émis une fois par seconde.
-- **NMEA 0183** sur le port RS485 : trame `$IIXDR` (humidité, température,
+- **NMEA 0183** sur le port RS485 : trame `$WIXDR` (humidité, température,
   pression) toutes les 10 s, débit configurable de 4800 à 38400 bauds, ou
   sortie désactivée.
 - Les valeurs NMEA restent toujours en unités métriques (°C, %, bar), même
@@ -254,13 +255,13 @@ Enregistrés dans la NVS (namespace `baro`), rechargés au démarrage :
 
 | Sortie | Support | Contenu | Période |
 |---|---|---|---|
-| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) et 16 (RX) | PGN 130312 (température), 130313 (humidité), 130314 (pression) | 1 s |
-| NMEA 0183 | RS485, GPIO 44 (TX) et 43 (RX) | `$IIXDR` : humidité, température de l'air, pression barométrique | 10 s |
+| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) et 16 (RX) | PGN 130316 (température, plage étendue), 130313 (humidité), 130314 (pression) | 1 s |
+| NMEA 0183 | RS485, GPIO 44 (TX) et 43 (RX) | `$WIXDR` : humidité, température de l'air, pression barométrique | 10 s |
 
 Exemple de trame NMEA 0183 :
 
 ```
-$IIXDR,H,61.0,P,AirHumidity,C,19.2,C,AirTemp,P,1.0281,B,Barometer*4F
+$WIXDR,H,61.0,P,AirHumidity,C,19.2,C,AirTemp,P,1.0281,B,Barometer*03
 ```
 
 ## Structure du projet
@@ -275,10 +276,9 @@ webui.cpp / webui.h                 serveur HTTP, pages HTML, API JSON
 nmea.cpp / nmea.h                   sortie NMEA 0183 (RS485)
 nmea2k.cpp / nmea2k.h               sortie NMEA 2000 (CAN / TWAI)
 rtc_clock.cpp / rtc_clock.h         PCF85063A, DS3231 ou horloge logicielle
-bme280_local.cpp / bme280_local.h   pilote BME280
+bme280_local.cpp / bme280_local.h   pilote BME280 maison (I2C, formules Bosch)
 i2c_bus.cpp / i2c_bus.h             bus I²C partagé (ancien pilote, imposé par ESP32_Display_Panel)
 datetime_local.h                    type DateTime minimal (évite la dépendance à RTClib)
-calibrate.cpp                       calibration du tactile
 Definition.h                        constantes : délais, plages, numéros de page
 esp_panel_board_supported_conf.h    sélection de la carte pour ESP32_Display_Panel
 build_opt.h                         option de compilation (canvas en PSRAM)
@@ -320,6 +320,13 @@ caractères accentués.
 sont remplacés au moment de l'envoi (page principale) ou lus dans une table
 français/anglais pour les pages construites dynamiquement. Aucune page n'est
 dupliquée dans le binaire.
+
+**Pilote BME280 maison.** Le capteur est lu par un petit pilote dédié (I2C
+uniquement) : le bus est tenu par le pilote « legacy » d'ESP-IDF installé par
+ESP32_Display_Panel, avec lequel `Wire` ne peut pas cohabiter. Les formules de
+compensation sont celles publiées par Bosch Sensortec (BSD-3-Clause, copyright
+conservé dans `bme280_local.cpp`) ; le reste du pilote est sous MIT, comme le
+projet.
 
 ## Licence
 
