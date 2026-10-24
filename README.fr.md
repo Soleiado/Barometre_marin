@@ -142,7 +142,8 @@ Versions avec lesquelles le projet a été compilé et testé :
 | [ESP32_IO_Expander](https://github.com/esp-arduino-libs/ESP32_IO_Expander) | 1.1.1 | Requis par ESP32_Display_Panel (CH422G) |
 | [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) | 2.5.43 | Canvas de dessin 800 × 480 en PSRAM |
 | [TFT_eWidget](https://github.com/Bodmer/TFT_eWidget) | 0.0.5 | Boutons et champs de formulaire du menu tactile |
-| [NMEA2000](https://github.com/ttlappalainen/NMEA2000) | 4.24.1 | Pile NMEA 2000 (pilote `NMEA2000_esp32_twai`) |
+| [NMEA2000](https://github.com/ttlappalainen/NMEA2000) | 4.24.1 | Pile NMEA 2000 |
+| [NMEA2000_esp32](https://github.com/ttlappalainen/NMEA2000_esp32) | 1.0.3 | Pilote CAN TWAI (`NMEA2000_esp32_twai`) |
 
 Les autres bibliothèques utilisées (`WiFi`, `WebServer`, `ESPmDNS`,
 `Preferences`, `SPI`, `driver/i2c`) sont fournies avec le cœur ESP32.
@@ -156,7 +157,8 @@ arduino-cli lib install \
   "ESP32_IO_Expander@1.1.1" \
   "TFT_eSPI@2.5.43" \
   "TFT_eWidget@0.0.5" \
-  "NMEA2000@4.24.1"
+  "NMEA2000@4.24.1" \
+  "NMEA2000_esp32@1.0.3"
 ```
 
 > Le dossier de bibliothèques du projet ne contient **aucune** modification

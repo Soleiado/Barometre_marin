@@ -138,7 +138,8 @@ Versions with which the project was compiled and tested:
 | [ESP32_IO_Expander](https://github.com/esp-arduino-libs/ESP32_IO_Expander) | 1.1.1 | Required by ESP32_Display_Panel (CH422G) |
 | [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) | 2.5.43 | 800 × 480 drawing canvas in PSRAM |
 | [TFT_eWidget](https://github.com/Bodmer/TFT_eWidget) | 0.0.5 | Buttons and form fields of the touch menu |
-| [NMEA2000](https://github.com/ttlappalainen/NMEA2000) | 4.24.1 | NMEA 2000 stack (`NMEA2000_esp32_twai` driver) |
+| [NMEA2000](https://github.com/ttlappalainen/NMEA2000) | 4.24.1 | NMEA 2000 stack |
+| [NMEA2000_esp32](https://github.com/ttlappalainen/NMEA2000_esp32) | 1.0.3 | TWAI CAN driver (`NMEA2000_esp32_twai`) |
 
 The other libraries used (`WiFi`, `WebServer`, `ESPmDNS`, `Preferences`, `SPI`,
 `driver/i2c`) come with the esp32 core.
@@ -152,7 +153,8 @@ arduino-cli lib install \
   "ESP32_IO_Expander@1.1.1" \
   "TFT_eSPI@2.5.43" \
   "TFT_eWidget@0.0.5" \
-  "NMEA2000@4.24.1"
+  "NMEA2000@4.24.1" \
+  "NMEA2000_esp32@1.0.3"
 ```
 
 > The project's library folder holds **no** local modifications: these are the
