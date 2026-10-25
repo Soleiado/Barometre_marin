@@ -66,7 +66,7 @@ carte, les valeurs en direct et le graphique sur la page web.*
   de pression que l'écran et la ligne verte à 1013 hPa.
 - Interface **bilingue français / anglais**, choisie dans la page de réglages ;
   le choix est conservé en mémoire et ne concerne que le web (l'écran de la
-  carte reste en français).
+  carte reste en anglais).
 - Page de réglages : langue, redémarrage de l'écran (sans perte d'historique),
   redémarrage de la carte, unité de température, débit NMEA 0183, correction
   d'étalonnage de l'humidité, réseau WiFi, date et heure, enregistrement sur

@@ -65,7 +65,7 @@ values and chart on the web page.*
   1013 hPa.
 - **Bilingual French / English** interface, chosen on the settings page; the
   choice is stored in memory and only affects the web page (the board display
-  stays in French).
+  stays in English).
 - Settings page: language, display restart (without losing history), board
   restart, temperature unit, NMEA 0183 baud rate, humidity calibration offset,
   WiFi network, date and time, SD card logging.
