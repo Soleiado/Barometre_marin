@@ -16,6 +16,7 @@
 #include "Definition.h"
 #include "nmea.h"
 #include "webui.h"         // interface web (WiFi) : mesures + historique
+#include "sdlog.h"         // enregistrement des mesures sur la carte SD (TF)
 
 //===========================================
 // Global instantiation
@@ -25,7 +26,7 @@
 Screen          tft;
 Menu            menu1(&tft,  1, 6);
 Menu            menu11(&tft,11, 3);
-Menu            menu12(&tft,12, 5);
+Menu            menu12(&tft,12, 6);
 Menu            menu13(&tft,13, 6);
 Form            form1(&tft, 14);
 GUI             *gui = &menu1;       // Default menu
@@ -114,12 +115,13 @@ float           tempC        = 0.0;      // temperature en degres C, quelle que 
 int16_t         humidity     = 0;
 bool            bfahrenheit  = false;
 int32_t         speed_nmea   = 0;
+int8_t          humidity_cal = 0;   // correction d'etalonnage humidite (en %)
 int             page         = PAGE_DATA;
 int             old_page     = PAGE_SCREEN_SAVER;
 
 String          label1 [6] = {"Temp. Unit", "Hist. Range", "NMEA Config.", "Date & Time", "Restart Screen", "Exit"};
 String          label11[3] = {"Celsuis", "Fahr.", "Exit"};
-String          label12[5] = {"hist. 6h", "hist. 12h", "hist. 24h", "hist. 96h", "Exit"};
+String          label12[6] = {"hist. 6h", "hist. 12h", "hist. 24h", "hist. 48h", "hist. 96h", "Exit"};
 String          label13[6] = {"N2K only", "4800b", "9600b", "19200b", "38400b", "Exit"};
 
 extern int8_t   history_mode;
@@ -217,7 +219,7 @@ int manageMenu(int page, int16_t t_x, int16_t t_y)
     //-------------------------------
     case 16:
     case 113:
-    case 125:
+    case 126:
     case 136:
       ret = PAGE_DATA;
       break;   
@@ -267,6 +269,10 @@ int manageMenu(int page, int16_t t_x, int16_t t_y)
       ret = PAGE_DATA;
       break;          
     case 124:
+      history_mode = MODE_48H;
+      ret = PAGE_DATA;
+      break;
+    case 125:
       history_mode = MODE_96H;
       ret = PAGE_DATA;
       break;          
@@ -380,10 +386,14 @@ void getSensorData()
     pres     = pressure / 100.0;
     temp     = (float) temperature / 100.0;
     tempC    = temp;
-    humidity = HUMIDITY_CORRECTION(hum);
+    humidity = HUMIDITY_CORRECTION(hum) + humidity_cal;
+
+    if (humidity < 0)   humidity = 0;
+    if (humidity > 100) humidity = 100;
   }
 
   saveHistoricalValues(pres, temp, humidity);
+  sdlogUpdate(pres, tempC, humidity);
 }
 
 //#########################################################################
@@ -428,14 +438,15 @@ void setup(void)
   }
 
   if (bme280_ok) {
-    BME280.mode(NormalMode);
+    // Le capteur reste en veille : chaque lecture (getSensorData) declenche
+    // une mesure en mode force puis attend sa fin (voir bme280_local.cpp).
+    BME280.mode(SleepMode);
     BME280.setOversampling(TemperatureSensor,Oversample16);
     BME280.setOversampling(HumiditySensor,   Oversample16);
     BME280.setOversampling(PressureSensor,   Oversample16);
     BME280.iirFilter(IIR16);
     //BME280.inactiveTime(inactive1000ms);
 
-    delay(200);
     BME280.getSensorData(temperature, hum, pressure); // Throw away first reading, I2C/BME280 garbage
 
     pres     = pressure / 100.0;
@@ -480,10 +491,10 @@ void setup(void)
   menu11.setFrameColor(TFT_DARKGREY, TFT_LIGHTGREY);
   menu11.initGUI(-1, -1, 380, 210, TFT_NAVY, TFT_SKYBLUE, TFT_BLACK, 2);
 
-  for (int i = 0; i < 5; i++)
+  for (int i = 0; i < 6; i++)
     menu12.setButtonLabel(i, label12[i]);
   menu12.setFrameColor(TFT_DARKGREY, TFT_LIGHTGREY);
-  menu12.initGUI(-1, -1, 380, 300, TFT_NAVY, TFT_SKYBLUE, TFT_BLACK, 2);
+  menu12.initGUI(-1, -1, 380, 350, TFT_NAVY, TFT_SKYBLUE, TFT_BLACK, 2);
 
   menu13.setButtonLabel(0, "*"+label13[0]+"*");
   for (int i = 1; i < 7; i++)
@@ -494,6 +505,9 @@ void setup(void)
   //-- Interface web : WiFi domestique (identifiants en NVS) ou point
   //   d'acces de secours "Barometre". Non bloquant : loop() s'occupe du reste.
   webInit();
+
+  //-- Carte SD : montee si l'enregistrement est active (voir page Reglages).
+  sdlogInit();
 
   log_d("Free heap: %d", ESP.getFreeHeap());
 }
@@ -613,11 +627,18 @@ void loop()
     switch (page) {
       case PAGE_DATA:
         backLight(true);
-        // Le canvas contenait le menu ou un historique : on repeint le fond
-        // de la page de mesure avant que les widgets ne soient redessines.
-        if (old_page == PAGE_MENU || old_page == PAGE_HUM_HIST ||
-            old_page == PAGE_TEMP_HIST || old_page == PAGE_PRES_HIST)
+        if (old_page == PAGE_SCREEN_SAVER) {
+          // Reveil : la dalle est restee sans rafraichissement pendant la
+          // veille, elle a pu se decaler. On la reinitialise (meme
+          // operation que "Restart Screen") pour remettre l'image en place,
+          // sans toucher aux mesures ni a l'historique.
+          Screen::reinit();
+        } else if (old_page == PAGE_MENU || old_page == PAGE_HUM_HIST ||
+                   old_page == PAGE_TEMP_HIST || old_page == PAGE_PRES_HIST) {
+          // Le canvas contenait le menu ou un historique : on repeint le
+          // fond de la page de mesure avant que les widgets soient redessines.
           tft.fillRectVGradient(0,0,UI_W,UI_H, TFT_YELLOW,  TFT_NAVY);
+        }
         sensorDelay = 0;
         break;
       case PAGE_MENU:

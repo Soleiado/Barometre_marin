@@ -98,4 +98,11 @@ private:
   bool     _backlightOn = false;
 };
 
+//---------------------------------------------------------------------
+// Sortie du CH422G (expandeur I2C de la carte) : regle le niveau d'une
+// sortie EXIO tout en preservant les autres. Utilise pour le retro
+// eclairage (EXIO2) et pour le chip-select de la carte SD (EXIO4).
+//---------------------------------------------------------------------
+void ch422SetIOBit(uint8_t bit, bool high);
+
 #endif // _INC_SCREEN_H

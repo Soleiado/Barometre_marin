@@ -26,6 +26,7 @@
 #include "Definition.h"
 #include "datetime_local.h"
 #include "rtc_clock.h"
+#include "sdlog.h"
 
 // Mesures courantes et reglages, definis dans Barometre_marin.ino
 extern float   pres;
@@ -34,6 +35,7 @@ extern int16_t humidity;
 extern bool    bfahrenheit;
 extern bool    bme280_ok;
 extern int8_t  history_mode;
+extern int8_t  humidity_cal;   // correction d'etalonnage humidite (en %)
 extern int32_t speed_nmea;    // 0 = NMEA 2000 seul, sinon debit RS485
 
 // Defini dans Barometre_marin.ino : applique un reglage venu du web (menu
@@ -104,7 +106,9 @@ enum : uint8_t {
   TX_DATETIME, TX_CLOCK, TX_SET_CLOCK, TX_THIS_TIME,
   TX_RTC_LOST, TX_RTC_HW_OK, TX_RTC_SOFT, TX_BACK,
   TX_SSID, TX_PASS, TX_SAVE_RESTART, TX_WIFI_NOTE, TX_BACK_SHORT,
-  TX_SSID_EMPTY, TX_SAVED_TITLE, TX_REBOOT_JOIN, TX_RECONNECT, TX_NADA
+  TX_SSID_EMPTY, TX_SAVED_TITLE, TX_REBOOT_JOIN, TX_RECONNECT, TX_NADA,
+  TX_SDLOG, TX_SDLOG_ENABLE, TX_SDLOG_CARD, TX_SDLOG_PRESENT, TX_SDLOG_ABSENT,
+  TX_SDLOG_PCT, TX_SDLOG_NOCARD, TX_SDLOG_NOTE, TX_HUMCAL, TX_HUMCAL_OFFSET
 };
 
 static const WebText kText[] = {
@@ -188,7 +192,21 @@ static const WebText kText[] = {
     "echoue), puis ouvre http://barometre.local/ ou http://192.168.4.1/",
     "Reconnect to your network (or to the Barometre network if the connection "
     "fails), then open http://barometre.local/ or http://192.168.4.1/" },
-  { "introuvable",                                 "not found" }
+  { "introuvable",                                 "not found" },
+  { "Enregistrement SD",                           "SD logging" },
+  { "Enregistrer les mesures sur la carte SD",     "Log measurements to the SD card" },
+  { "Carte SD :",                                  "SD card:" },
+  { "presente",                                    "present" },
+  { "absente",                                     "absent" },
+  { "occupee a %d %%",                             "%d%% used" },
+  { "Pas de carte SD : l'enregistrement reste desactive.",
+    "No SD card: logging stays disabled." },
+  { "Un fichier AAAAMMJJ.csv est cree chaque jour ; au-dela de 90 %% "
+    "d'occupation, le plus ancien est supprime.",
+    "One AAAAMMJJ.csv file is created per day; above 90%% usage the oldest "
+    "is deleted." },
+  { "Etalonnage humidite",                        "Humidity calibration" },
+  { "Correction (%)",                             "Offset (%)" }
 };
 
 #define TEXT_COUNT  ((uint8_t)(sizeof(kText) / sizeof(kText[0])))
@@ -228,7 +246,8 @@ text-decoration:none;padding:11px 20px;border-radius:11px;letter-spacing:.01em}
 #clock{color:var(--dim);font-variant-numeric:tabular-nums;font-size:14px}
 main{max-width:900px;margin:0 auto;padding:0 16px 24px}
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
-.card{background:var(--card);border-radius:14px;padding:14px 16px}
+.card{background:var(--card);border-radius:14px;padding:14px 16px;cursor:pointer;user-select:none}
+.card.active{box-shadow:inset 0 0 0 2px var(--accent)}
 .card .lbl{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.07em}
 .card .val{display:flex;align-items:baseline;gap:6px;margin-top:4px}
 .card b{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -239,7 +258,7 @@ h2{font-size:15px;margin:0;font-weight:600}
 .ranges{display:flex;gap:6px}
 .ranges button{background:#0f172a;color:var(--dim);border:1px solid #334155;border-radius:9px;padding:6px 12px;font-size:14px;cursor:pointer}
 .ranges button.on{background:var(--accent);border-color:var(--accent);color:#062133;font-weight:600}
-canvas{width:100%;height:300px;display:block}
+canvas{width:100%;height:340px;display:block}
 #note{color:var(--dim);font-size:13px;margin-top:6px;min-height:17px}
 .banner{display:none;background:#7c2d12;color:#fed7aa;border-radius:10px;padding:10px 14px;margin-top:14px;font-size:14px}
 .banner a{color:#fed7aa}
@@ -253,17 +272,18 @@ footer a{color:#94a3b8}
 <main>
 <div class="banner" id="banner">{{AP_HINT}} <a href="/wifi">{{CFG_WIFI}}</a></div>
 <section class="cards">
-  <div class="card"><div class="lbl">{{PRESSURE}}</div><div class="val"><b id="p">--</b><i>hPa</i></div></div>
-  <div class="card"><div class="lbl">{{TEMPERATURE}}</div><div class="val"><b id="t">--</b><i id="tu">&deg;C</i></div></div>
-  <div class="card"><div class="lbl">{{HUMIDITY}}</div><div class="val"><b id="h">--</b><i>%</i></div></div>
+  <div class="card active" data-kind="pres"><div class="lbl">{{PRESSURE}}</div><div class="val"><b id="p">--</b><i>hPa</i></div></div>
+  <div class="card" data-kind="temp"><div class="lbl">{{TEMPERATURE}}</div><div class="val"><b id="t">--</b><i id="tu">&deg;C</i></div></div>
+  <div class="card" data-kind="hum"><div class="lbl">{{HUMIDITY}}</div><div class="val"><b id="h">--</b><i>%</i></div></div>
 </section>
 <section class="panel">
   <div class="head">
-    <h2>{{HIST_TITLE}}</h2>
+    <h2 id="histtitle">{{HIST_TITLE}}</h2>
     <div class="ranges">
       <button data-h="6" class="on">6 h</button>
       <button data-h="12">12 h</button>
       <button data-h="24">24 h</button>
+      <button data-h="48">48 h</button>
       <button data-h="96">96 h</button>
     </div>
   </div>
@@ -273,13 +293,17 @@ footer a{color:#94a3b8}
 </main>
 <footer><span id="state">{{CONNECTING}}</span><span id="clock">--</span></footer>
 <script>
-var range = 6, hist = null;
+var range = 6, hist = null, kind = 'pres', fh = 0;
 function $(id){ return document.getElementById(id); }
 function num(v, d){ return v.toFixed(d).replace('.', '{{DEC}}'); }
 function hhmm(sec){
   sec = ((Math.round(sec) % 86400) + 86400) % 86400;
   var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
   return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
+}
+function dayTag(tod, back){
+  var d = Math.floor((tod - back) / 86400);
+  return d === 0 ? 'j' : 'j' + d;
 }
 function niceStep(raw){
   var mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -296,6 +320,7 @@ function tick(){
     $('clock').textContent = d.time;
     $('banner').style.display = d.sta ? 'none' : 'block';
     $('state').textContent = d.sta ? ('WiFi ' + d.rssi + ' dBm - ' + d.ip) : "{{AP_PREFIX}}" + d.ip;
+    if (fh !== (d.fh ? 1 : 0)) { fh = d.fh ? 1 : 0; draw(); }
   }).catch(function(){
     $('state').textContent = "{{OFFLINE}}";
   });
@@ -311,6 +336,32 @@ function loadHist(h){
     .catch(function(){ hist = null; draw(); });
 }
 
+function selectKind(k){
+  kind = k;
+  var cs = document.querySelectorAll('.card');
+  for (var i = 0; i < cs.length; i++)
+    cs[i].className = 'card' + (cs[i].dataset.kind === k ? ' active' : '');
+  var lbl = document.querySelector('.card[data-kind="' + k + '"] .lbl').textContent;
+  $('histtitle').textContent = lbl + ' · ' + range + ' h';
+  draw();
+}
+
+function cfg(){
+  if (kind === 'temp') {
+    if (fh) return { lo:-4, hi:104, grid:9, label:18, lastDec:1, unit:'°F', drop:0,
+                     conv:function(v){ return v * 9 / 5 + 32; } };
+    return { lo:-20, hi:40, grid:5, label:10, lastDec:1, unit:'°C', drop:0,
+             conv:function(v){ return v; } };
+  }
+  if (kind === 'hum')
+    return { lo:0, hi:100, grid:10, label:20, lastDec:0, unit:'%', drop:0,
+             conv:function(v){ return v; } };
+  return { lo:(hist && hist.pmin !== undefined) ? hist.pmin : 980,
+           hi:(hist && hist.pmax !== undefined) ? hist.pmax : 1030,
+           grid:5, label:10, lastDec:0, unit:'hPa', drop:3,
+           conv:function(v){ return v; } };
+}
+
 function draw(){
   var cv = $('chart'), ctx = cv.getContext('2d');
   var dpr = window.devicePixelRatio || 1;
@@ -319,17 +370,16 @@ function draw(){
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
-  var padL = 46, padR = 12, padT = 12, padB = 24;
+  var padL = 46, padR = 12, padT = 12, padB = 40;
   var iw = W - padL - padR, ih = H - padT - padB;
 
-  var data = (hist && hist.pres) ? hist.pres : [];
+  var c = cfg();
+  var arr = (hist && hist[kind]) ? hist[kind] : [];
+  var data = arr.map(c.conv);
   var n = data.length, vals = [], i;
   for (i = 0; i < n; i++) if (data[i] !== null) vals.push(data[i]);
 
-  // Echelle verticale identique a celle de l'ecran de la carte : 50 hPa,
-  // une ligne et une etiquette tous les 10 hPa.
-  var lo = (hist && hist.pmin !== undefined) ? hist.pmin : 980;
-  var hi = (hist && hist.pmax !== undefined) ? hist.pmax : 1030;
+  var lo = c.lo, hi = c.hi;
 
   function X(i){ return padL + (n > 1 ? i * iw / (n - 1) : iw / 2); }
   function Y(v){
@@ -340,9 +390,11 @@ function draw(){
   ctx.font = '12px system-ui,sans-serif';
   ctx.textBaseline = 'middle';
 
-  for (var v = hi; v >= lo - 0.001; v -= 5) {
+  var stepsPerLabel = Math.max(1, Math.round(c.label / c.grid));
+  var g = 0;
+  for (var v = hi; v >= lo - 0.001; v -= c.grid, g++) {
     var yy = Y(v);
-    var major = (Math.abs(v % 10) < 0.001);
+    var major = (g % stepsPerLabel === 0);
     ctx.strokeStyle = major ? '#334155' : '#243247'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR, yy); ctx.stroke();
     if (major) {
@@ -354,14 +406,32 @@ function draw(){
   ctx.strokeStyle = '#475569';
   ctx.beginPath(); ctx.moveTo(padL, padT + ih); ctx.lineTo(W - padR, padT + ih); ctx.stroke();
 
-  // Graduations d'heure, du plus ancien au plus recent
+  // Ligne de reference : pression standard 1013 hPa (verte), si elle est
+  // dans la fenetre affichee.
+  if (kind === 'pres') {
+    var ref = 1013;
+    if (ref >= lo && ref <= hi) {
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(padL, Y(ref)); ctx.lineTo(W - padR, Y(ref)); ctx.stroke();
+    }
+  }
+
+  // Graduations d'heure, du plus ancien au plus recent ; sous chaque heure,
+  // le jour (j = aujourd'hui, j-1 = hier, ...) pour lever l'ambiguite des
+  // vues longues (24 h et 96 h).
   if (hist && n > 1) {
-    var per = hist.step * 60;
-    ctx.fillStyle = '#94a3b8'; ctx.textBaseline = 'top';
-    for (var k = 0; k <= 4; k++) {
-      var idx = Math.round(k * (n - 1) / 4);
-      ctx.textAlign = (k === 0) ? 'left' : (k === 4 ? 'right' : 'center');
-      ctx.fillText(hhmm(hist.tod - (n - 1 - idx) * per), X(idx), padT + ih + 6);
+    var per  = hist.step * 60;
+    var span = (n - 1) * per;
+    ctx.textBaseline = 'top';
+    for (var k = 0; k <= 5; k++) {
+      var back = Math.round(span * (5 - k) / 5);
+      var x    = padL + k * iw / 5;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(hhmm(hist.tod - back), x, padT + ih + 6);
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(dayTag(hist.tod, back), x, padT + ih + 20);
     }
     ctx.textAlign = 'left';
   }
@@ -369,33 +439,38 @@ function draw(){
   $('note').textContent = vals.length ? '' : "{{EMPTY_HIST}}";
   if (!vals.length) return;
 
-  // Courbe : segment rouge si la pression chute de 3 hPa ou plus
   ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   var prev = null;
   for (i = 0; i < n; i++) {
     if (data[i] === null) { prev = null; continue; }
     if (prev !== null) {
-      ctx.strokeStyle = (prev.v - data[i] >= 3) ? '#f87171' : '#38bdf8';
+      var red = (kind === 'pres') && (prev.v - data[i] >= c.drop);
+      ctx.strokeStyle = red ? '#f87171' : '#38bdf8';
       ctx.beginPath(); ctx.moveTo(X(prev.i), Y(prev.v)); ctx.lineTo(X(i), Y(data[i])); ctx.stroke();
     }
     prev = { i: i, v: data[i] };
   }
 
-  ctx.fillStyle = '#38bdf8';
-  for (i = 0; i < n; i++) {
-    if (data[i] === null) continue;
-    ctx.beginPath(); ctx.arc(X(i), Y(data[i]), 2.6, 0, 6.2832); ctx.fill();
+  if (n <= 96) {
+    ctx.fillStyle = '#38bdf8';
+    for (i = 0; i < n; i++) {
+      if (data[i] === null) continue;
+      ctx.beginPath(); ctx.arc(X(i), Y(data[i]), 2.6, 0, 6.2832); ctx.fill();
+    }
   }
 
   var last = data[n - 1];
   if (last !== null) {
     ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText(Math.round(last) + ' hPa', W - padR, Y(last) - 7);
+    ctx.fillText((c.lastDec ? last.toFixed(c.lastDec) : Math.round(last)) + ' ' + c.unit, W - padR, Y(last) - 7);
   }
 }
 
 document.querySelectorAll('.ranges button').forEach(function(b){
   b.addEventListener('click', function(){ loadHist(+b.dataset.h); });
+});
+document.querySelectorAll('.card').forEach(function(card){
+  card.addEventListener('click', function(){ selectKind(card.dataset.kind); });
 });
 window.addEventListener('resize', draw);
 tick(); loadHist(6);
@@ -539,13 +614,16 @@ void webSettingsLoad()
   bfahrenheit = prefs.getBool("fah", false);
   speed_nmea  = prefs.getInt("nmea", 0);
   s_lang      = prefs.getUChar("lang", LANG_FR);
+  humidity_cal = (int8_t)prefs.getInt("humcal", 0);
   prefs.end();
 
   if (!nmeaSpeedValid(speed_nmea)) speed_nmea = 0;
   if (s_lang > LANG_EN)            s_lang      = LANG_FR;
+  if (humidity_cal < -50)          humidity_cal = -50;
+  if (humidity_cal > 50)           humidity_cal = 50;
 
-  ESP_LOGI(TAG, "reglages : unites %s, NMEA %d, langue %s",
-           bfahrenheit ? "F" : "C", (int)speed_nmea, langTag());
+  ESP_LOGI(TAG, "reglages : unites %s, NMEA %d, langue %s, humidite %+d%%",
+           bfahrenheit ? "F" : "C", (int)speed_nmea, langTag(), (int)humidity_cal);
 }
 
 //---------------------------------------------------------------------
@@ -645,6 +723,17 @@ static void handleParamsPage()
   page += T(TX_SAVE);
   page += F("</button></form>");
 
+  //--- Etalonnage humidite --------------------------------------------
+  page += F("<h2>");
+  page += T(TX_HUMCAL);
+  page += F("</h2><form method=\"post\" action=\"/params\"><label>");
+  page += T(TX_HUMCAL_OFFSET);
+  page += F("<input type=\"number\" name=\"humcal\" value=\"");
+  page += String((int)humidity_cal);
+  page += F("\" min=\"-50\" max=\"50\" step=\"1\"></label><button>");
+  page += T(TX_SAVE);
+  page += F("</button></form>");
+
   //--- Sortie NMEA ---------------------------------------------------
   page += F("<h2>");
   page += T(TX_NMEA);
@@ -677,6 +766,46 @@ static void handleParamsPage()
   page += F("</p><button>");
   page += T(TX_SAVE);
   page += F("</button></form>");
+
+  //--- Enregistrement SD ----------------------------------------------
+  page += F("<h2>");
+  page += T(TX_SDLOG);
+  page += F("</h2><form method=\"post\" action=\"/params\"><label class=\"inline\">"
+            "<input type=\"checkbox\" name=\"log\" value=\"1\"");
+  if (sdlogEnabled()) page += F(" checked");
+  page += F("> ");
+  page += T(TX_SDLOG_ENABLE);
+  page += F("</label><button>");
+  page += T(TX_SAVE);
+  page += F("</button></form><p class=\"note\">");
+  page += T(TX_SDLOG_CARD);
+  page += F(" ");
+
+  if (sdlogPresent()) {
+    page += T(TX_SDLOG_PRESENT);
+
+    int pct = sdlogPercentUsed();
+
+    if (pct >= 0) {
+      char buf[24];
+      snprintf(buf, sizeof(buf), T(TX_SDLOG_PCT), pct);
+      page += " (";
+      page += buf;
+      page += ")";
+    }
+  } else {
+    page += T(TX_SDLOG_ABSENT);
+  }
+
+  page += F("</p><p class=\"note\">");
+  page += T(TX_SDLOG_NOTE);
+  page += F("</p>");
+
+  if (server.hasArg("sderror")) {
+    page += F("<div class=\"ko\">");
+    page += T(TX_SDLOG_NOCARD);
+    page += F("</div>");
+  }
 
   //--- Reseau WiFi ---------------------------------------------------
   page += F("<h2>");
@@ -761,6 +890,8 @@ static void handleParamsPage()
 
 static void handleParamsSave()
 {
+  bool sdError = false;
+
   if (server.hasArg("lang"))
     s_lang = (server.arg("lang") == "en") ? LANG_EN : LANG_FR;
 
@@ -773,16 +904,33 @@ static void handleParamsSave()
     if (nmeaSpeedValid(speed)) speed_nmea = speed;
   }
 
+  if (server.hasArg("humcal")) {
+    int v = server.arg("humcal").toInt();
+
+    if (v < -50) v = -50;
+    if (v >  50) v =  50;
+
+    humidity_cal = (int8_t)v;
+  }
+
+  // Enregistrement SD : la case n'est presente dans la requete que si
+  // elle est cochee. Sans carte, sdlogSetEnabled remet l'option a off.
+  if (server.hasArg("log"))
+    sdError = !sdlogSetEnabled(true);
+  else
+    sdlogSetEnabled(false);
+
   prefs.begin("baro", false);
   prefs.putUChar("lang", s_lang);
   prefs.putBool("fah", bfahrenheit);
   prefs.putInt("nmea", speed_nmea);
+  prefs.putInt("humcal", (int)humidity_cal);
   prefs.end();
 
   uiSettingsChanged();          // menu tactile + redessin de la page
   Screen::restartPanel();       // l'ecriture en flash a pu bousculer la dalle
 
-  server.sendHeader("Location", "/params?saved=1");
+  server.sendHeader("Location", sdError ? "/params?sderror=1" : "/params?saved=1");
   server.send(303, "text/plain", "");
 }
 
@@ -875,10 +1023,10 @@ static void handleHistory()
 {
   int8_t hours = server.hasArg("h") ? (int8_t)server.arg("h").toInt() : MODE_06H;
 
-  if (hours != MODE_06H && hours != MODE_12H && hours != MODE_24H && hours != MODE_96H)
+  if (hours != MODE_06H && hours != MODE_12H && hours != MODE_24H && hours != MODE_48H && hours != MODE_96H)
     hours = MODE_06H;
 
-  int16_t n = barometerHistCount();
+  int16_t n = barometerHistWindow(hours);
 
   String j = "{";
   j += "\"h\":"     + String(hours);
@@ -931,8 +1079,9 @@ static void handleDiag()
 
   // Relecture directe des reglages en NVS (diagnostic).
   prefs.begin("baro", true);
-  bool    nvsFah  = prefs.getBool("fah", false);
-  int32_t nvsNmea = prefs.getInt("nmea", -1);
+  bool    nvsFah    = prefs.getBool("fah", false);
+  int32_t nvsNmea   = prefs.getInt("nmea", -1);
+  int32_t nvsHumcal = prefs.getInt("humcal", 0);
   prefs.end();
 
   String j = "{";
@@ -952,6 +1101,7 @@ static void handleDiag()
   j += ",\"disc\":"   + String((unsigned)s_staDisconnects);
   j += ",\"nvsfah\":" + String(nvsFah ? 1 : 0);
   j += ",\"nvsnmea\":" + String((int)nvsNmea);
+  j += ",\"nvshumcal\":" + String((int)nvsHumcal);
   j += "}";
 
   server.send(200, "application/json", j);

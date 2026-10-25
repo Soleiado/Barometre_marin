@@ -285,6 +285,17 @@ bool BME280_Class::readSensors()
 {
   if (!_present) return false;
 
+  // Mesure en mode "force" : declencher une conversion, attendre sa fin
+  // (bit measuring du statut), puis lire. Fiable et deterministe : en mode
+  // normal, lire pendant une conversion donnait parfois des valeurs
+  // incoherentes (pression a 714 hPa au lieu de 1028).
+  writeRegister(REG_CTRL_MEAS, (uint8_t)((_ctrlMeas & 0xFC) | 0x01));
+
+  for (uint16_t i = 0; i < 250; i++) {
+    if (!(readRegister(REG_STATUS) & 0x08)) break;   // measuring = 0
+    delay(1);
+  }
+
   uint8_t b[8];
 
   if (!boardI2C.readRegister(_address, REG_DATA, b, sizeof(b))) return false;

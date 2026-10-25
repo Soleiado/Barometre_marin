@@ -1,6 +1,7 @@
 
 #include <stdint.h>
 #include <math.h>
+#include <string.h>
 #include <TFT_eSPI.h> // Hardware-specific library
 #include "datetime_local.h"
 #include "rtc_clock.h"     // DS3231 / PCF85063A / horloge logicielle
@@ -21,12 +22,11 @@
 #define HIST_X        GRAPH_BAND_X                          // origine a l'ecran
 #define HIST_Y        GRAPH_BAND_Y
 #define HIST_LEFT      72                                  // x du premier point
-#define HIST_STEP      15                                  // px entre deux points
+#define HIST_RIGHT   (HIST_W - 20)                          // x du dernier point
 #define HIST_TOP       20                                  // y de max_pressure
 #define HIST_PPMB       6                                  // pixels par mbar
 #define HIST_SPAN      50                                  // plage 1030 -> 980 hPa
 #define HIST_LABELS    (HIST_SPAN / 10 + 1)                // 6 etiquettes
-#define HIST_RIGHT   (HIST_LEFT + HIST_STEP * (MAXHOURTIMESLOT - 1))
 #define HIST_BOTTOM  (HIST_TOP + HIST_SPAN * HIST_PPMB)
 
 #define TITLE_Y         8
@@ -47,22 +47,18 @@ char    label[HIST_LABELS][5] = {"1030", "1020", "1010", "1000", "0990", "0980"}
 
 int16_t normal_pressure_y = HIST_TOP;
 
-int16_t meter_data[MAXHOURTIMESLOT];
+// Scratch : pression du mode courant convertie en pixels y.
+int16_t meter_data[HIST_SLOTS];
 
-// Historique de l'humidite (%HR), de la temperature (0,1 degre C) et de la pression
-//
-// Une mesure toutes les 15 min dans la serie 6h
-// toutes les 30 min dans la serie 12h
-// toutes les heures dans la serie 24h
-// toutes les 4 h dans la serie 96h (voir saveHistoricalValues).
-//
-// Les 3 series sont indexees par modeIndex() : 6h, 12h, 24h, 96h.
-// NOTEMP marque les cases encore vides (une temperature de -0,1 degre est
-// une valeur valide, d'ou un sentinelle different de -1).
+// Historique unique : une mesure toutes les 15 min, 96 h de profondeur.
+// L'indice 0 est la plus ancienne, HIST_SLOTS-1 la plus recente. Une case
+// non encore remplie vaut NOPRESSHUM (hum/pression) ou NOTEMP (temperature).
+static int16_t hum_data     [HIST_SLOTS];
+static int16_t temp_data    [HIST_SLOTS];
+static int16_t pressure_data[HIST_SLOTS];
 
-static int16_t hum_data     [4][MAXHOURTIMESLOT];
-static int16_t temp_data    [4][MAXHOURTIMESLOT];
-static int16_t pressure_data[4][MAXHOURTIMESLOT];
+// Nombre de mesures valides accumulees (0..HIST_SLOTS).
+static int16_t histCount = 0;
 
 TFT_eSprite *graph;
 TFT_eSprite *misc;    // bandeau de titre
@@ -71,7 +67,8 @@ TFT_eSprite *info;    // bandeau date / heure / pression
 // Ecran de destination (canvas TFT_eSprite de la classe Screen)
 static TFT_eSPI *s_tft = nullptr;
 
-DateTime last_update[4];
+// Date de la derniere mesure (la plus recente).
+DateTime last_update;
 
 //====================================================
 // initBarometer: cree les sprites du graphique et
@@ -91,174 +88,139 @@ void initBarometer(TFT_eSPI *tft)
   misc->createSprite(HIST_W, TITLE_H);
   info->createSprite(HIST_W, INFO_H);
 
-  // Series vides au demarrage : aucune mesure avant la premiere lecture
-  for (int8_t m = 0; m < 4; m++) {
-    last_update[m] = rtcClockNow();
-    for (int8_t i = 0; i < MAXHOURTIMESLOT; i++) {
-      pressure_data[m][i]  = NOPRESSHUM;
-      hum_data[m][i]       = NOPRESSHUM;
-      temp_data[m][i]      = NOTEMP;
-    }
+  // Buffer vide au demarrage : aucune mesure avant la premiere lecture.
+  histCount = 0;
+  last_update = rtcClockNow();
+
+  for (int16_t i = 0; i < HIST_SLOTS; i++) {
+    pressure_data[i] = NOPRESSHUM;
+    hum_data[i]      = NOPRESSHUM;
+    temp_data[i]     = NOTEMP;
   }
 }
 
 //====================================================
-// Index de la serie correspondant a un mode d'historique
+// Fenetres d'historique
+//
+// Il n'y a qu'un buffer (une mesure toutes les 15 min) : une fenetre de
+// "hours" heures vaut hours x 4 points. Le point 0 de la fenetre est le
+// plus ancien, le dernier est la mesure la plus recente.
 //====================================================
 
-static int8_t modeIndex(int8_t mode)
+static int16_t windowPoints(int8_t hours)
 {
-  switch (mode) {
-    case MODE_96H: return 3;
-    case MODE_24H: return 2;
-    case MODE_12H: return 1;
-    default:       return 0;
-  }
+  return (int16_t)hours * 4;      // 6->24, 12->48, 24->96, 96->384
+}
+
+static int16_t windowStart(int8_t hours)
+{
+  return (int16_t)(HIST_SLOTS - windowPoints(hours));
 }
 
 //====================================================
-// Acces aux series : la pression est stockee en hPa,
-// l'humidite en %HR et la temperature en 0,1 degre C.
+// Acces en lecture pour l'interface web et l'affichage
 //====================================================
-
-static int16_t *pressureSeries(int8_t mode)
-{
-  return pressure_data[modeIndex(mode)];
-}
-
-static int16_t *humiditySeries(int8_t mode)
-{
-  return hum_data[modeIndex(mode)];
-}
-
-static int16_t *temperatureSeries(int8_t mode)
-{
-  return temp_data[modeIndex(mode)];
-}
-
-//====================================================
-// Acces en lecture pour l'interface web
-//====================================================
-
-static int8_t hoursIndex(int8_t hours)
-{
-  switch (hours) {
-    case MODE_12H: return 1;
-    case MODE_24H: return 2;
-    case MODE_96H: return 3;
-    default:       return 0;
-  }
-}
 
 int16_t barometerHistCount()
 {
-  return MAXHOURTIMESLOT;
+  return histCount;
+}
+
+int16_t barometerHistWindow(int8_t hours)
+{
+  return windowPoints(hours);
 }
 
 int16_t barometerHistStep(int8_t hours)
 {
-  switch (hours) {
-    case MODE_96H: return 240;
-    case MODE_24H: return  60;
-    case MODE_12H: return  30;
-    default:       return  15;
-  }
+  (void) hours;                   // pas de temps unique pour toutes les durees
+
+  return HIST_STEP_MIN;
 }
 
 uint32_t barometerHistStamp(int8_t hours)
 {
-  return last_update[hoursIndex(hours)].unixtime();
+  (void) hours;
+
+  return last_update.unixtime();
 }
 
 // Heure locale de la derniere mesure, en secondes depuis minuit : evite
 // toute conversion de fuseau horaire dans la page web.
 int32_t barometerHistTimeOfDay(int8_t hours)
 {
-  DateTime t = last_update[hoursIndex(hours)];
+  (void) hours;
 
-  return (int32_t)t.hour() * 3600 + (int32_t)t.minute() * 60 + t.second();
+  return (int32_t)last_update.hour() * 3600 + (int32_t)last_update.minute() * 60
+         + last_update.second();
 }
 
 // Pression en hPa, humidite en %HR, temperature en degres C.
+// "i" indexe la fenetre (0 = plus ancien).
 float barometerHistValue(HistSeriesKind kind, int8_t hours, int16_t i)
 {
-  if (i < 0 || i >= MAXHOURTIMESLOT)
+  if (i < 0 || i >= windowPoints(hours))
     return NAN;
 
-  int8_t m = hoursIndex(hours);
+  int16_t idx = windowStart(hours) + i;
 
   switch (kind) {
     case HIST_HUMIDITY:
-      return (hum_data[m][i] == NOPRESSHUM) ? NAN : (float)hum_data[m][i];
+      return (hum_data[idx] == NOPRESSHUM) ? NAN : (float)hum_data[idx];
 
     case HIST_TEMPERATURE:
-      return (temp_data[m][i] == NOTEMP) ? NAN : (float)temp_data[m][i] / 10.0f;
+      return (temp_data[idx] == NOTEMP) ? NAN : (float)temp_data[idx] / 10.0f;
 
     default:
-      return (pressure_data[m][i] == NOPRESSHUM) ? NAN : (float)pressure_data[m][i];
+      return (pressure_data[idx] == NOPRESSHUM) ? NAN : (float)pressure_data[idx];
   }
 }
 
 //====================================================
-// Decale une serie d'un cran et place la nouvelle
+// Decale le buffer d'un cran et place la nouvelle
 // mesure en derniere position (la plus recente).
 //====================================================
 
-static void shiftSeries(int16_t *data, int16_t value)
+static void shiftSeries(int16_t *data)
 {
-  for (int8_t i = 0; i < MAXHOURTIMESLOT - 1; i++)
-    data[i] = data[i + 1];
-
-  data[MAXHOURTIMESLOT - 1] = value;
+  memmove(data, data + 1, (HIST_SLOTS - 1) * sizeof(int16_t));
 }
 
 //====================================================
-// pushSample: ajoute une mesure aux trois series d'un
-// mode. La pression, l'humidite et la temperature
-// partagent ainsi exactement le meme axe des temps.
+// appendSample: ajoute une mesure aux trois grandeurs.
+// La pression, l'humidite et la temperature partagent
+// ainsi exactement le meme axe des temps.
 //====================================================
 
-static void pushSample(int8_t mode, float pres, float temp, int16_t hum)
+static void appendSample(float pres, float temp, int16_t hum)
 {
-  shiftSeries(pressureSeries(mode),    (int16_t)lroundf(pres));
-  shiftSeries(humiditySeries(mode),    hum);
-  shiftSeries(temperatureSeries(mode), (int16_t)lroundf(temp * 10.0f));
+  shiftSeries(pressure_data);
+  shiftSeries(hum_data);
+  shiftSeries(temp_data);
 
-  last_update[modeIndex(mode)] = rtcClockNow();
+  pressure_data[HIST_SLOTS - 1] = (int16_t)lroundf(pres);
+  hum_data[HIST_SLOTS - 1]      = hum;
+  temp_data[HIST_SLOTS - 1]     = (int16_t)lroundf(temp * 10.0f);
+
+  if (histCount < HIST_SLOTS)
+    histCount++;
+
+  last_update = rtcClockNow();
 }
 
-
 //====================================================
-// saveHistoricalValues: ajoute la mesure courante aux
-// trois series (pression, humidite, temperature).
-//
-// Une mesure toutes les 15 min alimente la serie 6h ; la serie 12h est
-// decalee une fois sur deux, la 24h toutes les heures et la 96h toutes
-// les 4 h : les quatre series couvrent donc bien 6, 12, 24 et 96 heures.
+// saveHistoricalValues: ajoute la mesure courante au
+// buffer, une fois toutes les 15 min (SAVE_DATA_DELAY).
 //====================================================
 
 void saveHistoricalValues(float pres, float temp, int16_t hum)
 {
-  static unsigned long  last_time = millis();
-  static bool           first_time  = true;
-  static int8_t         quarter     = 0;
-  static int8_t         hour        = 0;
-  
+  static unsigned long last_time = millis();
+  static bool         first_time = true;
+
   if (millis() - last_time > SAVE_DATA_DELAY || first_time) {
-    pushSample(MODE_06H, pres, temp, hum);
+    appendSample(pres, temp, hum);
 
-    if (quarter == 2) {
-      pushSample(MODE_12H, pres, temp, hum);
-    } else if (quarter == 0) {
-      if (hour == 0) {
-        pushSample(MODE_96H, pres, temp, hum);
-      }
-      pushSample(MODE_12H, pres, temp, hum);
-      pushSample(MODE_24H, pres, temp, hum);
-      hour = ++hour % 4;
-    }
-
-    quarter = ++quarter % 4;
     last_time  = millis();
     first_time = false;
   }
@@ -271,20 +233,21 @@ void saveHistoricalValues(float pres, float temp, int16_t hum)
 // La fenetre fait 50 hPa (6 etiquettes tous les 10 hPa). Tant que la
 // derniere mesure reste dans la plage de base [980, 1030], la fenetre est
 // celle d'origine ; sinon elle glisse par pas de 10 hPa pour contenir la
-// mesure (2 hPa de marge en haut et en bas). L'etat est conserve par
-// duree (6/12/24/96 h) : l'ecran et le web voient donc exactement la meme
-// echelle pour une serie donnee.
+// mesure (2 hPa de marge en haut et en bas). Le buffer etant unique, une
+// seule echelle sert a toutes les durees : l'ecran et le web voient donc
+// exactement la meme fenetre.
 //====================================================
 
-static int16_t s_scaleMax[4] = {MAXPRESSURE, MAXPRESSURE, MAXPRESSURE, MAXPRESSURE};
-static int16_t s_scaleMin[4] = {MINPRESSURE, MINPRESSURE, MINPRESSURE, MINPRESSURE};
+static int16_t s_scaleMax = MAXPRESSURE;
+static int16_t s_scaleMin = MINPRESSURE;
 
 void barometerHistPressureScale(int8_t hours, int16_t *lo, int16_t *hi)
 {
-  int8_t   idx  = hoursIndex(hours);
-  int16_t  last = pressure_data[idx][MAXHOURTIMESLOT - 1];
-  int16_t  maxp = s_scaleMax[idx];
-  int16_t  minp = s_scaleMin[idx];
+  (void) hours;
+
+  int16_t last = pressure_data[HIST_SLOTS - 1];
+  int16_t maxp = s_scaleMax;
+  int16_t minp = s_scaleMin;
 
   if ((last == NOPRESSHUM) ||
       ((last <= MAXPRESSURE - 2) && (last >= MINPRESSURE + 2))) {
@@ -301,8 +264,8 @@ void barometerHistPressureScale(int8_t hours, int16_t *lo, int16_t *hi)
     }
   }
 
-  s_scaleMax[idx] = maxp;
-  s_scaleMin[idx] = minp;
+  s_scaleMax = maxp;
+  s_scaleMin = minp;
 
   if (lo) *lo = minp;
   if (hi) *hi = maxp;
@@ -314,7 +277,8 @@ void barometerHistPressureScale(int8_t hours, int16_t *lo, int16_t *hi)
 //====================================================
 
 void mapPressureHistValues() {
-  int16_t *pressure_data = pressureSeries(history_mode);
+  int16_t w     = windowPoints(history_mode);
+  int16_t start = windowStart(history_mode);
 
   barometerHistPressureScale(history_mode, &min_pressure, &max_pressure);
   mid_pressure = (max_pressure + min_pressure) / 2;
@@ -324,8 +288,8 @@ void mapPressureHistValues() {
   }
   normal_pressure_y = HIST_TOP + (max_pressure - 1013) * HIST_PPMB;
 
-  for (int8_t i = 0; i < MAXHOURTIMESLOT; i++) {
-    int16_t pressure = pressure_data[i];
+  for (int16_t i = 0; i < w; i++) {
+    int16_t pressure = pressure_data[start + i];
     if (pressure != NOPRESSHUM) {
       if (pressure > max_pressure)
         pressure = max_pressure;
@@ -378,9 +342,11 @@ void drawPressureHistBg()
     }
   }
 
-  // Lignes verticales : une tous les deux points
-  for (int x = HIST_LEFT; x <= HIST_RIGHT; x += 2 * HIST_STEP)
+  // Lignes verticales : cinq segments reguliers sur l'axe des temps
+  for (int k = 0; k <= 5; k++) {
+    int16_t x = HIST_LEFT + k * (HIST_RIGHT - HIST_LEFT) / 5;
     graph->drawLine(x, HIST_TOP - 10, x, HIST_BOTTOM, TFT_BLACK);
+  }
 }
 
 //====================================================
@@ -405,6 +371,10 @@ void drawPressureHist(float pres,  DateTime& now)
       drop_pressure = DROPPRESSURE_24H;
       title = "Atm. Pres. Hist.: 24h";
       break;
+    case MODE_48H:
+      drop_pressure = DROPPRESSURE_48H;
+      title = "Atm. Pres. Hist.: 48h";
+      break;
     case MODE_96H:
       drop_pressure = DROPPRESSURE_96H;
       title = "Atm. Pres. Hist.: 96h";
@@ -414,8 +384,10 @@ void drawPressureHist(float pres,  DateTime& now)
   mapPressureHistValues();
   drawPressureHistBg();
 
-  for (int i = 0; i < MAXHOURTIMESLOT; i++) {
-    int16_t x = HIST_LEFT + HIST_STEP * i;
+  int16_t w = windowPoints(history_mode);
+
+  for (int16_t i = 0; i < w; i++) {
+    int16_t x = HIST_LEFT + (int32_t)i * (HIST_RIGHT - HIST_LEFT) / (w - 1);
 
     if (meter_data[i] == NOPRESSHUM)
       continue;
@@ -426,10 +398,11 @@ void drawPressureHist(float pres,  DateTime& now)
       if (meter_data[i - 1] - meter_data[i] >= drop_pressure * HIST_PPMB)
         color = TFT_RED;
 
-      graph->drawLine(x - HIST_STEP, meter_data[i - 1], x, meter_data[i], color);
+      int16_t px = HIST_LEFT + (int32_t)(i - 1) * (HIST_RIGHT - HIST_LEFT) / (w - 1);
+      graph->drawLine(px, meter_data[i - 1], x, meter_data[i], color);
     }
 
-    graph->fillCircle(x, meter_data[i], 6, color);
+    graph->fillCircle(x, meter_data[i], 3, color);
   }
 
   graph->drawRect(0, 0, HIST_W - 1, HIST_H - 1, TFT_BLACK);
@@ -493,9 +466,9 @@ void drawPressureHist(float pres,  DateTime& now)
 //
 // Meme presentation que le graphique de la page de mesure, etendu a toute
 // la dalle : bandeau de titre, cadre, lignes de grille avec les valeurs a
-// gauche, courbe et, en bas, l'heure des mesures (une etiquette toutes les
-// cinq mesures). Le pas de temps entre deux points est celui du mode
-// choisi dans le menu, commun aux trois series.
+// gauche, courbe et, en bas, l'heure des mesures. Toutes les vues lisent
+// le buffer unique a 15 min : le nombre de points depend de la duree
+// choisie (24 pour 6 h, 48 pour 12 h, 96 pour 24 h, 384 pour 96 h).
 //---------------------------------------------------------------------
 
 #define FULL_W          800
@@ -505,18 +478,16 @@ void drawPressureHist(float pres,  DateTime& now)
 #define FULL_PLOT_Y      84
 #define FULL_PLOT_W     672
 #define FULL_PLOT_H     310
-#define FULL_POINT_STEP (FULL_PLOT_W / (MAXHOURTIMESLOT - 1))   // 28 px
 #define FULL_XLABEL_Y   (FULL_PLOT_Y + FULL_PLOT_H + 10)
 
-// Une verticale et une etiquette d'heure tous les 6 points : les 25 points
-// donnent donc 5 reperes, du plus ancien (bord gauche) a maintenant (bord
-// droit), et l'axe couvre exactement la duree choisie (6, 12, 24 ou 96 h).
-#define FULL_LABEL_STEP  6
+// Nombre de reperes verticaux (grille + etiquette d'heure) sur l'axe,
+// du plus ancien (bord gauche) a maintenant (bord droit).
+#define FULL_LABELS      6
 
 extern bool bfahrenheit;
 
 //---------------------------------------------------------------------
-// Pas de temps, en minutes, entre deux mesures du mode courant
+// Pas de temps, en minutes, entre deux mesures (fixe : 15 min).
 //---------------------------------------------------------------------
 
 static int16_t historyStepMinutes()
@@ -527,7 +498,8 @@ static int16_t historyStepMinutes()
 //---------------------------------------------------------------------
 // Trace commun aux trois series.
 //
-// data     : serie du mode courant
+// data     : pointeur sur le debut de la fenetre (voir windowStart)
+// points   : nombre de points de la fenetre (windowPoints)
 // noValue  : valeur marquant une case vide
 // scale / offset : valeur reelle = data[i] * scale + offset
 // dropValue: chute (dans l'unite reelle) a partir de laquelle le segment
@@ -536,6 +508,7 @@ static int16_t historyStepMinutes()
 
 static void drawHistoryPage(const char *title,
                             const int16_t *data,
+                            int16_t points,
                             int16_t noValue,
                             float   scale,
                             float   offset,
@@ -544,6 +517,7 @@ static void drawHistoryPage(const char *title,
                             float   gridStep,
                             float   labelStep,
                             float   dropValue,
+                            float   refLine,
                             int16_t stepMin,
                             DateTime& now)
 {
@@ -602,9 +576,18 @@ static void drawHistoryPage(const char *title,
       s_tft->drawLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, TFT_LIGHTGREY);
   }
 
-  // Une verticale et une etiquette d'heure tous les 6 points
-  for (int8_t i = 0; i < MAXHOURTIMESLOT; i += FULL_LABEL_STEP) {
-    int16_t x = FULL_PLOT_X + i * FULL_POINT_STEP;
+  // Ligne de reference (pression standard 1013 hPa) : en vert, si elle est
+  // dans la fenetre affichee.
+  if (!isnan(refLine) && refLine >= minVal && refLine <= maxVal) {
+    int16_t y = FULL_PLOT_Y + (int16_t)lroundf((maxVal - refLine) * FULL_PLOT_H / (maxVal - minVal));
+
+    s_tft->drawWideLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, 2, TFT_GREEN, TFT_GREEN);
+  }
+
+  // Verticales regulieres : FULL_LABELS reperes repartis sur l'axe
+  for (int8_t k = 0; k < FULL_LABELS; k++) {
+    int16_t idx = (int16_t)lroundf(k * (points - 1) / (float)(FULL_LABELS - 1));
+    int16_t x   = FULL_PLOT_X + (int32_t)idx * FULL_PLOT_W / (points - 1);
 
     s_tft->drawLine(x, FULL_PLOT_Y, x, FULL_PLOT_Y + FULL_PLOT_H, TFT_LIGHTGREY);
   }
@@ -620,14 +603,14 @@ static void drawHistoryPage(const char *title,
   float   prevV    = 0.0f;
   bool    havePrev = false;
 
-  for (int8_t i = 0; i < MAXHOURTIMESLOT; i++) {
+  for (int16_t i = 0; i < points; i++) {
     if (data[i] == noValue) {
       havePrev = false;
       continue;
     }
 
     float   v = data[i] * scale + offset;
-    int16_t x = FULL_PLOT_X + i * FULL_POINT_STEP;
+    int16_t x = FULL_PLOT_X + (int32_t)i * FULL_PLOT_W / (points - 1);
 
     // Une valeur hors echelle (par exemple une temperature sous -20 degres
     // ou au-dessus de 40) est plaquee sur le bord du cadre plutot que de
@@ -645,7 +628,7 @@ static void drawHistoryPage(const char *title,
     if (havePrev)
       s_tft->drawWideLine(prevX, prevY, x, y, 2, color, color);
 
-    s_tft->fillCircle(x, y, 5, color);
+    s_tft->fillCircle(x, y, 3, color);
 
     prevX    = x;
     prevY    = y;
@@ -655,7 +638,8 @@ static void drawHistoryPage(const char *title,
 
   //-------------------------------------------------------------------
   // Etiquettes d'heure : du plus ancien (bord gauche) a maintenant (bord
-  // droit). L'axe couvre ainsi toute la duree de l'historique.
+  // droit). L'axe couvre ainsi toute la duree de l'historique. Sous chaque
+  // heure, le jour relatif (j = aujourd'hui, j-1 = hier, ...).
   //-------------------------------------------------------------------
 
   s_tft->setFreeFont(&FreeSansBold9pt7b);
@@ -663,15 +647,30 @@ static void drawHistoryPage(const char *title,
   s_tft->setTextDatum(TC_DATUM);
 
   uint32_t nowsec = now.unixtime();
+  int32_t  tod    = (int32_t)now.hour() * 3600 + (int32_t)now.minute() * 60 + now.second();
 
-  for (int8_t i = 0; i < MAXHOURTIMESLOT; i += FULL_LABEL_STEP) {
-    uint32_t back = (uint32_t)(MAXHOURTIMESLOT - 1 - i) * (uint32_t)stepMin * 60UL;
+  for (int8_t k = 0; k < FULL_LABELS; k++) {
+    int16_t  idx  = (int16_t)lroundf(k * (points - 1) / (float)(FULL_LABELS - 1));
+    uint32_t back = (uint32_t)(points - 1 - idx) * (uint32_t)stepMin * 60UL;
+    int16_t  x    = FULL_PLOT_X + (int32_t)idx * FULL_PLOT_W / (points - 1);
     DateTime stamp(nowsec - back);
 
     char buf[10];
     snprintf(buf, sizeof(buf), "%02d:%02d", stamp.hour(), stamp.minute());
+    s_tft->drawString(buf, x, FULL_XLABEL_Y);
 
-    s_tft->drawString(buf, FULL_PLOT_X + i * FULL_POINT_STEP, FULL_XLABEL_Y);
+    // Jour relatif : j, j-1, j-2... (division entiere arrondie vers -inf)
+    int64_t s = (int64_t)tod - (int64_t)back;
+    int64_t d = s / 86400;
+    if (s < 0 && s % 86400 != 0) d -= 1;
+
+    char day[8];
+    if (d == 0) strcpy(day, "j");
+    else snprintf(day, sizeof(day), "j%d", (int)d);
+
+    s_tft->setTextColor(TFT_DARKGREY);
+    s_tft->drawString(day, x, FULL_XLABEL_Y + 14);
+    s_tft->setTextColor(TFT_BLACK);
   }
 }
 
@@ -682,7 +681,9 @@ void drawFullHistoryPage(HistSeriesKind kind)
   char     title[40];
   char     span[8];
   int16_t  stepMin = historyStepMinutes();
-  DateTime now = last_update[modeIndex(history_mode)];
+  int16_t  points  = windowPoints(history_mode);
+  int16_t  start   = windowStart(history_mode);
+  DateTime now = last_update;
 
   snprintf(span, sizeof(span), "%dh", (int)history_mode);
 
@@ -693,8 +694,8 @@ void drawFullHistoryPage(HistSeriesKind kind)
     //-----------------------------------------------------------------
     case HIST_HUMIDITY:
       snprintf(title, sizeof(title), "Humidity hist.: %s", span);
-      drawHistoryPage(title, humiditySeries(history_mode), NOPRESSHUM,
-                      1.0f, 0.0f, 0.0f, 100.0f, 10.0f, 20.0f, -1.0f,
+      drawHistoryPage(title, &hum_data[start], points, NOPRESSHUM,
+                      1.0f, 0.0f, 0.0f, 100.0f, 10.0f, 20.0f, -1.0f, NAN,
                       stepMin, now);
       break;
 
@@ -723,8 +724,8 @@ void drawFullHistoryPage(HistSeriesKind kind)
       }
 
       snprintf(title, sizeof(title), "Temperature hist.: %s", span);
-      drawHistoryPage(title, temperatureSeries(history_mode), NOTEMP,
-                      scale, offset, lo, hi, grid, label, -1.0f, stepMin, now);
+      drawHistoryPage(title, &temp_data[start], points, NOTEMP,
+                      scale, offset, lo, hi, grid, label, -1.0f, NAN, stepMin, now);
       break;
     }
 
@@ -737,6 +738,7 @@ void drawFullHistoryPage(HistSeriesKind kind)
 
       switch (history_mode) {
         case MODE_96H: drop = DROPPRESSURE_96H; break;
+        case MODE_48H: drop = DROPPRESSURE_48H; break;
         case MODE_24H: drop = DROPPRESSURE_24H; break;
         case MODE_12H: drop = DROPPRESSURE_12H; break;
         default:       drop = DROPPRESSURE_06H; break;
@@ -745,9 +747,9 @@ void drawFullHistoryPage(HistSeriesKind kind)
       mapPressureHistValues();       // met a jour min_pressure / max_pressure
 
       snprintf(title, sizeof(title), "Atm. Pres. Hist.: %s", span);
-      drawHistoryPage(title, pressureSeries(history_mode), NOPRESSHUM,
+      drawHistoryPage(title, &pressure_data[start], points, NOPRESSHUM,
                       1.0f, 0.0f, (float)min_pressure, (float)max_pressure,
-                      5.0f, 10.0f, drop, stepMin, now);
+                      5.0f, 10.0f, drop, 1013.0f, stepMin, now);
       break;
     }
   }

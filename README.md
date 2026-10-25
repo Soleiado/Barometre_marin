@@ -29,6 +29,7 @@ values and chart on the web page.*
 - [TFT_eSPI configuration](#tft_espi-configuration)
 - [Using the display](#using-the-display)
 - [Web interface](#web-interface)
+- [SD card](#sd-card)
 - [NMEA outputs](#nmea-outputs)
 - [Project structure](#project-structure)
 - [Technical notes](#technical-notes)
@@ -43,26 +44,31 @@ values and chart on the web page.*
 - Three full-screen history pages (humidity, temperature, pressure), opened by
   tapping the matching gauge and closed by tapping anywhere. Tapping the
   pressure chart opens the pressure history.
-- History window shared by the three series: **6 h, 12 h, 24 h or 96 h**. The
-  time axis covers exactly the selected duration, with one point every 15 min.
-- Fixed temperature scale (−20 → 40 °C, or −4 → 104 °F in Fahrenheit), pressure
-  scale sliding over 50 hPa — the same scale as the web page.
+- History window shared by the three series: **6 h, 12 h, 24 h, 48 h or 96 h**.
+  The time axis covers exactly the selected duration, with one point every
+  15 min.
+- Fixed temperature scale (−20 → 40 °C, or −4 → 104 °F in Fahrenheit), floating
+  pressure scale over 50 hPa — the same scale as the web page — with the
+  standard **1013 hPa** pressure marked by a **green line** (measurement page,
+  full-screen history and web page).
 - Screen standby after 5 min without a tap; the first tap wakes it up and
-  returns to the measurement page.
+  returns to the measurement page. On wake, the panel is automatically
+  reinitialised to put the image back in place (see "Restart Screen").
 - Touch menu: temperature unit, history window, NMEA configuration, date and
   time, display restart, exit.
-- The pressure scale is floating. At startup it spans 980 to 1030 mb, with the
-  1013 mb pressure (normal at sea level) shown by the green line.
 
 ### Web interface
 
-- Live values and a pressure history chart (6 / 12 / 24 / 96 h) with the same
-  scale as the display.
+- Live values and **three history charts** (pressure, temperature, humidity),
+  selected by clicking the matching card. Durations: **6 / 12 / 24 / 48 / 96 h**
+  at 15 min, with the same pressure scale as the display and the green line at
+  1013 hPa.
 - **Bilingual French / English** interface, chosen on the settings page; the
   choice is stored in memory and only affects the web page (the board display
   stays in French).
 - Settings page: language, display restart (without losing history), board
-  restart, temperature unit, NMEA 0183 baud rate, WiFi network, date and time.
+  restart, temperature unit, NMEA 0183 baud rate, humidity calibration offset,
+  WiFi network, date and time, SD card logging.
 - Connection to the home network, with an automatic fallback access point when
   the network is missing. Settings stored in NVS (flash memory) and reloaded at
   boot.
@@ -198,7 +204,7 @@ The menu stays open until **Exit**. Its entries:
 | Entry | Content |
 |---|---|
 | Temp. Unit | Celsius / Fahrenheit (the asterisk marks the current choice) |
-| Hist. Range | 6 h / 12 h / 24 h / 96 h |
+| Hist. Range | 6 h / 12 h / 24 h / 48 h / 96 h |
 | NMEA Config. | N2K only, or NMEA 0183 at 4800 / 9600 / 19200 / 38400 baud |
 | Date & Time | clock setting (day, month, year, hour, minutes) |
 | Restart Screen | resets the panel without losing history (see below) |
@@ -214,7 +220,7 @@ the same page lets you enter the home network credentials.
 | Page | Content |
 |---|---|
 | `/` | current values, history chart, settings link |
-| `/params` | language, display, units, NMEA output, WiFi network, date and time |
+| `/params` | language, display, units, NMEA output, WiFi network, date and time, SD logging |
 | `/wifi` | SSID and password entry (restarts the board) |
 
 ### JSON API
@@ -222,7 +228,7 @@ the same page lets you enter the home network credentials.
 | Route | Method | Parameters | Response |
 |---|---|---|---|
 | `/api/data` | GET | — | pressure, temperature, humidity, unit, history mode, time, WiFi status |
-| `/api/history` | GET | `h=6\|12\|24\|96` | pressure / temperature / humidity series, scales, time stamp |
+| `/api/history` | GET | `h=6\|12\|24\|48\|96` | pressure / temperature / humidity series, scales, time stamp |
 | `/api/diag` | GET | — | panel and network diagnostics (frames, stalls, free heap, PSRAM, RSSI) |
 | `/api/panel` | GET | `display=1`, `restart=1`, `reboot=1`, `pclk=<Hz>` | panel actions |
 | `/api/radio` | GET | `tx=<dBm>`, `sleep=0\|1` | WiFi transmit power and power saving |
@@ -246,7 +252,33 @@ Saved in NVS (namespace `baro`) and reloaded at boot:
 | `lang` | web interface language (0 = French, 1 = English) |
 | `fah` | temperature unit (Fahrenheit when true) |
 | `nmea` | NMEA 0183 baud rate (0 = N2K only) |
+| `humcal` | humidity calibration offset (in %) |
+| `log` | SD card logging (enabled when true) |
 | `LastNodeAddress` | NMEA 2000 node address |
+
+## SD card
+
+The microSD (TF) slot can log the measurements. The option is **off by default**
+and is only enabled from the web settings page ("SD logging" tile).
+
+- **Format**: **FAT32** card (or FAT16 for cards ≤ 2 GB). exFAT and NTFS are not
+  supported.
+- **Files**: one file per day, named `AAAAMMJJ.csv`, one line appended every
+  15 minutes:
+  ```
+  202610251430,1029.8,17.9,46
+  ```
+  i.e. `date/time (AAAAMMJJHHMM), pressure (mb), temperature (°C), humidity (%)`,
+  comma separator, dot decimals.
+- **No card**: if the option is enabled while no card is present, a message is
+  shown and the option is switched back off. A card removal is detected at the
+  next write (within 15 min) and also disables the option.
+- **Hot insert / remove**: the card is not detected automatically. After
+  inserting it, re-enable the option on the settings page.
+- **Card full**: when the card reaches 90% usage, the oldest file is deleted
+  (checked once per day).
+- The TF slot is wired in **SPI** (MOSI = GPIO 11, SCK = GPIO 12, MISO = GPIO 13),
+  the chip-select being the **EXIO4** output of the CH422G expander.
 
 ## NMEA outputs
 
@@ -272,6 +304,7 @@ menu.cpp / menu.h                   touch buttons and forms
 webui.cpp / webui.h                 HTTP server, HTML pages, JSON API
 nmea.cpp / nmea.h                   NMEA 0183 output (RS485)
 nmea2k.cpp / nmea2k.h               NMEA 2000 output (CAN / TWAI)
+sdlog.cpp / sdlog.h                 SD card measurement logging
 rtc_clock.cpp / rtc_clock.h         PCF85063A, DS3231 or software clock
 bme280_local.cpp / bme280_local.h   in-house BME280 driver (I2C, Bosch formulas)
 i2c_bus.cpp / i2c_bus.h             shared I²C bus (legacy driver, required by ESP32_Display_Panel)
@@ -293,10 +326,13 @@ internal RAM, cache invalidation of that buffer, and the canvas copy split into
 8-line slices. A resynchronisation is also requested automatically as soon as a
 refresh takes abnormally long, and the image can be put back in place without
 losing anything, from the touch menu (**Restart Screen**) or through
-`/api/panel?display=1`.
+`/api/panel?display=1`. Waking from standby automatically triggers this reset.
 
 **History in RAM.** The history series live in RAM and are lost at every
-restart: no periodic flash write, which would interrupt the panel refresh.
+restart: a single buffer of 384 measurements (96 h at one measurement every
+15 min) per quantity, from which the 6 / 12 / 24 / 48 / 96 h views are sliding
+windows. No periodic flash write, which would interrupt the panel refresh;
+long-term archiving goes through the SD card (see above).
 
 **Canvas in PSRAM.** The whole interface is drawn in an 800 × 480 TFT_eSPI sprite
 (768 KB) placed in PSRAM, then copied into the panel buffer.

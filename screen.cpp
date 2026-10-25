@@ -398,6 +398,9 @@ int Screen::restartError()
 #define CH422G_REG_RD_IO      0x26    // (0x4D >> 1) relecture des entrees IO
 #define CH422G_REG_WR_IO      0x38    // (0x70 >> 1) sorties IO0..IO7
 
+// Copie des sorties IO0..IO7 du CH422G : toutes a 1 a la mise sous tension.
+static uint8_t s_ch422IO = 0xFF;
+
 // Ecriture directe d'un registre du CH422G (un octet apres l'adresse).
 static bool ch422Write(uint8_t reg, uint8_t value)
 {
@@ -419,6 +422,17 @@ static int ch422ReadIO()
   return boardI2C.read();
 }
 
+void ch422SetIOBit(uint8_t bit, bool high)
+{
+  if (high) s_ch422IO |=  (uint8_t)(1 << bit);
+  else      s_ch422IO &= (uint8_t)~(1 << bit);
+
+  // WR_SET = 0x01 est indispensable : sans le bit IO_OE les sorties IO de
+  // l'expandeur restent en haute impedance.
+  ch422Write(CH422G_REG_WR_SET, 0x01);
+  ch422Write(CH422G_REG_WR_IO, s_ch422IO);
+}
+
 void Screen::setBacklight(bool on)
 {
   _backlightOn = on;
@@ -432,19 +446,12 @@ void Screen::setBacklight(bool on)
 
   // 2) Filet de securite : ecriture directe des registres du CH422G,
   //    apres la precedente pour ne pas desynchroniser le pilote.
-  //
-  //    WR_SET = 0x01 est indispensable : sans ce bit IO_OE les sorties
-  //    IO de l'expandeur restent en haute impedance, la sortie EXIO2 ne
-  //    suit plus WR_IO (RD_IO renvoie 0xFF) et le retro eclairage reste
-  //    allume par le pull-up. Verifie sur la carte : avec cette
-  //    ecriture, RD_IO = 0xFB et l'ecran s'eteint.
-  bool oe = ch422Write(CH422G_REG_WR_SET, 0x01);
-  bool io = ch422Write(CH422G_REG_WR_IO, on ? 0xFF : (uint8_t)~(1 << BACKLIGHT_EXIO));
+  //    Seule la sortie EXIO2 est modifiee : les autres (dont le CS de la
+  //    carte SD, EXIO4) gardent leur niveau.
+  ch422SetIOBit(BACKLIGHT_EXIO, on);
 
-  Serial.printf("[screen] retroeclairage %s (bibliotheque %s, IO_OE %s, WR_IO %s, RD_IO = 0x%02X)\n",
+  Serial.printf("[screen] retroeclairage %s (bibliotheque %s, RD_IO = 0x%02X)\n",
                 on ? "ON" : "OFF",
                 ok ? "ok" : "en echec",
-                oe ? "ok" : "en echec",
-                io ? "ok" : "en echec",
                 ch422ReadIO());
 }

@@ -2,11 +2,12 @@
 #ifndef _INC_DEFINITION_H
 #define _INC_DEFINITION_H
 
-#define MAXHOURTIMESLOT   25      // Points d'historique : (25 - 1) intervalles
-                                  // de 15 min (6h), 30 min (12h), 1 h (24h)
-                                  // ou 4 h (96h) -> l'axe couvre exactement
-                                  // la duree choisie.
-#define MAXHISTORY        100     // Historical data - 4 days
+// Historique : un SEUL buffer de 384 mesures par grandeur (pression,
+// humidite, temperature), a raison d'une mesure toutes les 15 min, soit
+// 96 heures de profondeur. Les vues 6 / 12 / 24 / 96 h sont des fenetres
+// glissantes dans ce buffer (24, 48, 96 ou 384 points a 15 min).
+#define HIST_SLOTS        384     // 96 h x 4 (une mesure toutes les 15 min)
+#define HIST_STEP_MIN     15      // pas de temps fixe entre deux mesures
 
 #define NOPRESSHUM        -1      // mbar
 #define NOTEMP            ((int16_t)-32768)
@@ -17,6 +18,7 @@
 #define MAXPRESSURE       1030    // mbar
 
 #define DROPPRESSURE_96H  28      // pressure drop in 1h
+#define DROPPRESSURE_48H  14      // pressure drop in 1h
 #define DROPPRESSURE_24H  7       // pressure drop in 1h
 #define DROPPRESSURE_12H  4       // pressure drop in 30min
 #define DROPPRESSURE_06H  2       // pressure drop in 15min
@@ -31,6 +33,7 @@
 #define SERIAL_CONSOLE_DEBUG 0
 
 #define MODE_96H          96
+#define MODE_48H          48
 #define MODE_24H          24
 #define MODE_12H          12
 #define MODE_06H          06

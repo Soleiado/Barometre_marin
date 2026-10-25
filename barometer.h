@@ -49,13 +49,17 @@ void saveHistoricalValues(float pres, float temp, int16_t hum);
 void initBarometer(TFT_eSPI *tft);
 
 //---------------------------------------------------------------------
-// Lecture des series d'historique, pour l'interface web (webui.cpp).
-// "hours" vaut 6, 12, 24 ou 96 ; barometerHistValue() renvoie NAN pour
-// une case encore vide.
+// Lecture des series d'historique, pour l'interface web (webui.cpp) et
+// l'affichage. Il n'y a qu'un buffer de 384 mesures (96 h a 15 min) ;
+// "hours" (6, 12, 24 ou 96) choisit la fenetre affichee :
+//   - barometerHistWindow(hours) donne le nombre de points (hours x 4) ;
+//   - barometerHistValue(kind, hours, i) renvoie la valeur du point i
+//     (0 = le plus ancien de la fenetre), ou NAN pour une case vide.
 //---------------------------------------------------------------------
 
-int16_t  barometerHistCount();                          // nombre de points par serie
-int16_t  barometerHistStep(int8_t hours);               // minutes entre deux points
+int16_t  barometerHistCount();                          // mesures valides accumulees
+int16_t  barometerHistWindow(int8_t hours);             // points de la fenetre (hours x 4)
+int16_t  barometerHistStep(int8_t hours);               // 15 min, pour toutes les durees
 uint32_t barometerHistStamp(int8_t hours);              // date de la derniere mesure
 int32_t  barometerHistTimeOfDay(int8_t hours);          // heure locale (s depuis minuit)
 void     barometerHistPressureScale(int8_t hours, int16_t *lo, int16_t *hi);

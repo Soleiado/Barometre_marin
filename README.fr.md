@@ -29,6 +29,7 @@ carte, les valeurs en direct et le graphique sur la page web.*
 - [Configuration de TFT_eSPI](#configuration-de-tft_espi)
 - [Utilisation de l'écran](#utilisation-de-lécran)
 - [Interface web](#interface-web)
+- [Carte SD](#carte-sd)
 - [Sorties NMEA](#sorties-nmea)
 - [Structure du projet](#structure-du-projet)
 - [Notes techniques](#notes-techniques)
@@ -44,28 +45,32 @@ carte, les valeurs en direct et le graphique sur la page web.*
   ouvertes d'un appui sur le cadran correspondant, refermées d'un appui
   n'importe où. L'appui sur le graphique de pression ouvre l'historique de
   pression.
-- Fenêtre d'historique commune aux trois séries : **6 h, 12 h, 24 h ou 96 h**.
-  L'axe des temps couvre exactement la durée choisie, avec un point par
-  intervalle de 15 min.
+- Fenêtre d'historique commune aux trois séries : **6 h, 12 h, 24 h, 48 h ou
+  96 h**. L'axe des temps couvre exactement la durée choisie, avec un point
+  toutes les 15 min.
 - Échelle de température fixe (−20 → 40 °C, ou −4 → 104 °F en degrés
-  Fahrenheit), échelle de pression glissante sur 50 hPa — la même que celle
-  affichée sur la page web.
+  Fahrenheit), échelle de pression flottante sur 50 hPa — la même que celle
+  affichée sur la page web — avec la pression standard **1013 hPa** marquée par
+  une **ligne verte** (page de mesure, historique plein écran et page web).
 - Mise en veille de l'écran après 5 min sans appui ; le premier appui rallume
-  et revient à la page de mesure.
+  et revient à la page de mesure. Au réveil, la dalle est automatiquement
+  reinitialisée pour remettre l'image en place (voir « Restart Screen »).
 - Menu tactile : unité de température, fenêtre d'historique, configuration
   NMEA, date et heure, redémarrage de l'écran, sortie.
-- L'echelle des pressions est flottante. Lors du démarrage, elle couvre de 980 à 1030mb, avec la pression 1013 (normale au niveau de la mer) indiquée par la ligne verte. 
 
 ### Interface web
 
-- Valeurs courantes en direct et graphique d'historique de la pression
-  (6 / 12 / 24 / 96 h), avec la même échelle que l'écran.
+- Valeurs courantes en direct et **trois graphiques d'historique** (pression,
+  température, humidité), sélectionnés d'un clic sur la carte correspondante.
+  Durées au choix : **6 / 12 / 24 / 48 / 96 h**, à 15 min, avec la même échelle
+  de pression que l'écran et la ligne verte à 1013 hPa.
 - Interface **bilingue français / anglais**, choisie dans la page de réglages ;
   le choix est conservé en mémoire et ne concerne que le web (l'écran de la
   carte reste en français).
 - Page de réglages : langue, redémarrage de l'écran (sans perte d'historique),
-  redémarrage de la carte, unité de température, débit NMEA 0183, réseau WiFi,
-  date et heure.
+  redémarrage de la carte, unité de température, débit NMEA 0183, correction
+  d'étalonnage de l'humidité, réseau WiFi, date et heure, enregistrement sur
+  carte SD.
 - Connexion au réseau domestique, avec point d'accès de secours automatique si
   le réseau est absent. Réglages conservés en NVS (mémoire flash) et rechargés
   au démarrage.
@@ -202,7 +207,7 @@ Le menu reste ouvert jusqu'à **Exit**. Ses entrées :
 | Entrée | Contenu |
 |---|---|
 | Temp. Unit | Celsius / Fahrenheit (l'astérisque marque le choix courant) |
-| Hist. Range | 6 h / 12 h / 24 h / 96 h |
+| Hist. Range | 6 h / 12 h / 24 h / 48 h / 96 h |
 | NMEA Config. | N2K seul, ou NMEA 0183 à 4800 / 9600 / 19200 / 38400 bauds |
 | Date & Time | réglage de l'horloge (jour, mois, année, heure, minutes) |
 | Restart Screen | réinitialise la dalle sans perdre l'historique (voir plus bas) |
@@ -219,7 +224,7 @@ réseau domestique.
 | Page | Contenu |
 |---|---|
 | `/` | valeurs courantes, graphique d'historique, accès aux réglages |
-| `/params` | langue, écran, unités, sortie NMEA, réseau WiFi, date et heure |
+| `/params` | langue, écran, unités, sortie NMEA, réseau WiFi, date et heure, enregistrement SD |
 | `/wifi` | saisie du SSID et du mot de passe (redémarre la carte) |
 
 ### API JSON
@@ -227,7 +232,7 @@ réseau domestique.
 | Route | Méthode | Paramètres | Réponse |
 |---|---|---|---|
 | `/api/data` | GET | — | pression, température, humidité, unité, mode d'historique, heure, état WiFi |
-| `/api/history` | GET | `h=6\|12\|24\|96` | séries pression / température / humidité, échelles, horodatage |
+| `/api/history` | GET | `h=6\|12\|24\|48\|96` | séries pression / température / humidité, échelles, horodatage |
 | `/api/diag` | GET | — | diagnostic dalle et réseau (images, blocages, tas libre, PSRAM, RSSI) |
 | `/api/panel` | GET | `display=1`, `restart=1`, `reboot=1`, `pclk=<Hz>` | actions sur la dalle |
 | `/api/radio` | GET | `tx=<dBm>`, `sleep=0\|1` | puissance d'émission et économie d'énergie WiFi |
@@ -251,7 +256,34 @@ Enregistrés dans la NVS (namespace `baro`), rechargés au démarrage :
 | `lang` | langue de l'interface web (0 = français, 1 = anglais) |
 | `fah` | unité de température (Fahrenheit si vrai) |
 | `nmea` | débit NMEA 0183 (0 = N2K seul) |
+| `humcal` | correction d'étalonnage de l'humidité (en %) |
+| `log` | enregistrement sur carte SD (activé si vrai) |
 | `LastNodeAddress` | adresse de nœud NMEA 2000 |
+
+## Carte SD
+
+Le slot microSD (TF) permet d'enregistrer les mesures. L'option est **coupée
+par défaut** et ne s'active que depuis la page Réglages de l'interface web
+(tuile « Enregistrement SD »).
+
+- **Format** : carte **FAT32** (ou FAT16 pour les cartes ≤ 2 Go). exFAT et NTFS
+  ne sont pas supportés.
+- **Fichiers** : un fichier par jour, nommé `AAAAMMJJ.csv`, une ligne ajoutée
+  toutes les 15 minutes :
+  ```
+  202610251430,1029.8,17.9,46
+  ```
+  soit `date/heure (AAAAMMJJHHMM), pression (mb), température (°C), humidité (%)`,
+  séparateur virgule, décimales avec point.
+- **Sans carte** : si l'option est activée alors qu'aucune carte n'est présente,
+  un message s'affiche et l'option est remise à off. Un retrait est détecté à la
+  prochaine écriture (sous 15 min) et désactive aussi l'option.
+- **Insertion / retrait à chaud** : la carte n'est pas détectée automatiquement.
+  Après l'insertion, il faut réactiver l'option dans la page Réglages.
+- **Carte pleine** : quand la carte atteint 90 % d'occupation, le fichier le plus
+  ancien est supprimé (contrôle une fois par jour).
+- Le slot TF est relié en **SPI** (MOSI = GPIO 11, SCK = GPIO 12, MISO = GPIO 13),
+  le chip-select étant la sortie **EXIO4** de l'expandeur CH422G.
 
 ## Sorties NMEA
 
@@ -277,6 +309,7 @@ menu.cpp / menu.h                   boutons et formulaires tactiles
 webui.cpp / webui.h                 serveur HTTP, pages HTML, API JSON
 nmea.cpp / nmea.h                   sortie NMEA 0183 (RS485)
 nmea2k.cpp / nmea2k.h               sortie NMEA 2000 (CAN / TWAI)
+sdlog.cpp / sdlog.h                 enregistrement des mesures sur la carte SD
 rtc_clock.cpp / rtc_clock.h         PCF85063A, DS3231 ou horloge logicielle
 bme280_local.cpp / bme280_local.h   pilote BME280 maison (I2C, formules Bosch)
 i2c_bus.cpp / i2c_bus.h             bus I²C partagé (ancien pilote, imposé par ESP32_Display_Panel)
@@ -299,11 +332,15 @@ cache du tampon, copie du canvas découpée en tranches de 8 lignes. Une
 resynchronisation est en outre demandée automatiquement dès qu'un balayage
 dépasse anormalement sa durée, et l'image peut être remise en place sans rien
 perdre, depuis le menu tactile (**Restart Screen**) ou par
-`/api/panel?display=1`.
+`/api/panel?display=1`. Le réveil de la veille déclenche automatiquement cette
+remise en place.
 
 **Historique en RAM.** Les séries d'historique tiennent en mémoire vive et sont
-perdues à chaque redémarrage : aucune écriture périodique en flash, ce qui
-éviterait justement d'interrompre le balayage de la dalle.
+perdues à chaque redémarrage : un buffer unique de 384 mesures (96 h à raison
+d'une mesure toutes les 15 min) par grandeur, dont les vues 6 / 12 / 24 / 48 /
+96 h sont des fenêtres glissantes. Aucune écriture périodique en flash, ce qui
+éviterait justement d'interrompre le balayage de la dalle ; l'archivage longue
+durée passe par la carte SD (voir plus haut).
 
 **Canvas en PSRAM.** L'interface est entièrement dessinée dans un sprite
 TFT_eSPI de 800 × 480 pixels (768 Ko) placé en PSRAM, puis recopié dans le
