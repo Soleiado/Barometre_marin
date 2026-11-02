@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "menu.h"
+#include "theme.h"
 
 //--------------------------------------------------------------------------------------
 //
@@ -175,11 +176,11 @@ void GUIItem::drawItem()
     _tft->drawString(_label.c_str(), _x + 5, _y - 5);
 
     if (_focus) {
-      _item->initButtonUL(_x, _y, _w, _h, _frameOutline, TFT_WHITE, _textColor, buf, _textSize);
-      _item->drawSmoothButton(false, 3, TFT_BLACK, buf);
+      _item->initButtonUL(_x, _y, _w, _h, _frameOutline, THEME_ACCENT, THEME_BG, buf, _textSize);
+      _item->drawSmoothButton(false, 3, THEME_PANEL, buf);
     } else {
       _item->initButtonUL(_x, _y, _w, _h, _frameOutline, _frameFill, _textColor, buf, _textSize);
-      _item->drawSmoothButton(false, 1, TFT_BLACK, buf);
+      _item->drawSmoothButton(false, 1, THEME_PANEL, buf);
     }
   }
 }
@@ -269,7 +270,7 @@ void Menu::drawGUI() {
   for (int i = 0; i < _nbButtons; i++ ) {
     if (_menuButton[i] != NULL) {
       _menuButton[i]->press(false);
-      _menuButton[i]->drawSmoothButton(false, 3, TFT_BLACK, _buttonLabel[i]); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
+      _menuButton[i]->drawSmoothButton(false, 3, _frameFill, _buttonLabel[i]); // 3 is outline width, _frameFill is the surrounding background colour for anti-aliasing
     }
   }  
   _buttonPress = _buttonRelease  = 0;
@@ -353,9 +354,9 @@ void Form::initGUI(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t outline,
     _formButton[i] = new ButtonWidget(_tft);
     if (_formButton[i] != NULL) {
       if (i == 0)
-        _formButton[i]->initButtonUL(X, Y, buttonW, buttonH, _buttonOutline, TFT_RED, textColor, (char*)_buttonLabel[i].c_str(), textSize);
+        _formButton[i]->initButtonUL(X, Y, buttonW, buttonH, _buttonOutline, THEME_HOT, THEME_BG, (char*)_buttonLabel[i].c_str(), textSize);
       else if (i == 3)
-        _formButton[i]->initButtonUL(X, Y, buttonW, buttonH, _buttonOutline, TFT_GREEN, textColor, (char*)_buttonLabel[i].c_str(), textSize);
+        _formButton[i]->initButtonUL(X, Y, buttonW, buttonH, _buttonOutline, THEME_OK, THEME_BG, (char*)_buttonLabel[i].c_str(), textSize);
       else  
         _formButton[i]->initButtonUL(X, Y, buttonW, buttonH, _buttonOutline, _buttonFill, textColor, (char*)_buttonLabel[i].c_str(), textSize);
 
@@ -384,18 +385,18 @@ void Form::initGUI(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t outline,
 
   _items[0] = new GUIItem(_tft, 0);
   _items[0]->setItemLimit(2023, 2050);
-  _items[0]->initItem(xRow, yRow, boxW, boxH, TFT_BLACK, TFT_LIGHTGREY, TFT_BLACK, 2);
+  _items[0]->initItem(xRow, yRow, boxW, boxH, THEME_GRID, THEME_PANEL, THEME_TEXT, 2);
   _items[0]->setItemLabel("YYYY", _frameOutline, _frameFill);
   _items[0]->setItemFocus(true);
 
   _items[1] = new GUIItem(_tft, 1);
   _items[1]->setItemLimit(1, 12);
-  _items[1]->initItem(xRow + (boxW + gap), yRow, boxW, boxH, TFT_BLACK, TFT_LIGHTGREY, TFT_BLACK, 2);
+  _items[1]->initItem(xRow + (boxW + gap), yRow, boxW, boxH, THEME_GRID, THEME_PANEL, THEME_TEXT, 2);
   _items[1]->setItemLabel("MM", _frameOutline, _frameFill);
 
   _items[2] = new GUIItem(_tft, 2);
   _items[2]->setItemLimit(1, 31);
-  _items[2]->initItem(xRow + 2 * (boxW + gap), yRow, boxW, boxH, TFT_BLACK, TFT_LIGHTGREY, TFT_BLACK, 2);
+  _items[2]->initItem(xRow + 2 * (boxW + gap), yRow, boxW, boxH, THEME_GRID, THEME_PANEL, THEME_TEXT, 2);
   _items[2]->setItemLabel("DD", _frameOutline, _frameFill);
 
   // Ligne 2 : heure et minutes
@@ -405,12 +406,12 @@ void Form::initGUI(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t outline,
 
   _items[3] = new GUIItem(_tft, 3);
   _items[3]->setItemLimit(0, 23);
-  _items[3]->initItem(xRow2, yRow2, boxW, boxH, TFT_BLACK, TFT_LIGHTGREY, TFT_BLACK, 2);
+  _items[3]->initItem(xRow2, yRow2, boxW, boxH, THEME_GRID, THEME_PANEL, THEME_TEXT, 2);
   _items[3]->setItemLabel("hh", _frameOutline, _frameFill);
 
   _items[4] = new GUIItem(_tft, 4);
   _items[4]->setItemLimit(0, 59);
-  _items[4]->initItem(xRow2 + (boxW + gap), yRow2, boxW, boxH, TFT_BLACK, TFT_LIGHTGREY, TFT_BLACK, 2);
+  _items[4]->initItem(xRow2 + (boxW + gap), yRow2, boxW, boxH, THEME_GRID, THEME_PANEL, THEME_TEXT, 2);
   _items[4]->setItemLabel("mm", _frameOutline, _frameFill);
 }
 
@@ -438,7 +439,7 @@ void Form::drawGUI()
   for (int i = 0; i < _nbButtons; i++ ) {
     if (_formButton[i] != NULL) {
       _formButton[i]->press(false);
-      _formButton[i]->drawSmoothButton(false, 3, TFT_BLACK, _buttonLabel[i]); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
+      _formButton[i]->drawSmoothButton(false, 3, _frameFill, _buttonLabel[i]); // 3 is outline width, _frameFill is the surrounding background colour for anti-aliasing
     }
   }  
   _buttonPress = _buttonRelease  = 0;
@@ -448,7 +449,7 @@ void Form::drawGUI()
     uint16_t y = _y + _h - 100;      // juste au-dessus des boutons
 
     _tft->setTextDatum(TC_DATUM);
-    _tft->setTextColor(TFT_RED);
+    _tft->setTextColor(THEME_HOT);
     _tft->drawString(_message, x - 1, y);
     _tft->drawString(_message, x,     y);
     _tft->drawString(_message, x + 1, y);

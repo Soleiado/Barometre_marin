@@ -14,6 +14,7 @@
 #include "barometer.h"
 #include "menu.h"
 #include "Definition.h"
+#include "theme.h"        // palette du theme "instrument marin"
 #include "nmea.h"
 #include "webui.h"         // interface web (WiFi) : mesures + historique
 #include "sdlog.h"         // enregistrement des mesures sur la carte SD (TF)
@@ -147,17 +148,17 @@ void drawMainPage(int16_t humidity, float temp, float pres)
 
   if (!bfahrenheit) {
     tempMeter.setRange(-20, 40, 20);
-    tempMeter.setZone(-20, 5, TFT_BLUE);
-    tempMeter.setZone(5, 25, TFT_WHITE);
-    tempMeter.setZone(25, 40, TFT_RED);
+    tempMeter.setZone(-20, 5, THEME_COLD);
+    tempMeter.setZone(5, 25, THEME_MID);
+    tempMeter.setZone(25, 40, THEME_HOT);
     tempMeter.setValue(temp);
     sprintf(bupres, "%.1fC", temp);  // Indicating now-value is outside MAXPRESSURE range
     tempMeter.setLabel2(bupres);
   } else {
     tempMeter.setRange(-4, 104, 20);
-    tempMeter.setZone(-4, 41, TFT_BLUE);
-    tempMeter.setZone(41, 77, TFT_WHITE);
-    tempMeter.setZone(77, 104, TFT_RED);
+    tempMeter.setZone(-4, 41, THEME_COLD);
+    tempMeter.setZone(41, 77, THEME_MID);
+    tempMeter.setZone(77, 104, THEME_HOT);
     temp = temp * 9.0/5.0 + 32;
     tempMeter.setValue(temp);
     sprintf(bupres, "%.1fF", temp);  // Indicating now-value is outside MAXPRESSURE range
@@ -370,7 +371,7 @@ void backLight(bool onOff)
 
   if (!onOff) {
     gui = &menu1;
-    tft.fillRectVGradient(0,0,UI_W,UI_H, TFT_YELLOW,  TFT_NAVY);
+    tft.fillRect(0,0,UI_W,UI_H, THEME_BG);
     drawMainPage(humidity, temp, pres);
     tft.flush();
   }
@@ -462,9 +463,9 @@ void setup(void)
 
   initBarometer(&tft);
 
-  humidityMeter.setZone(50, 67, TFT_GREEN);
-  humidityMeter.setZone(67, 84, TFT_ORANGE);
-  humidityMeter.setZone(84, 100, TFT_RED);
+  humidityMeter.setZone(50, 67, THEME_OK);
+  humidityMeter.setZone(67, 84, THEME_WARM);
+  humidityMeter.setZone(84, 100, THEME_HOT);
   humidityMeter.setLabel1("Humidity");
   humidityMeter.setOrigin(HUM_METER_X, HUM_METER_Y);
 
@@ -475,32 +476,32 @@ void setup(void)
   // Les menus sont centres automatiquement (x et y negatifs) et leurs
   // boutons se repartissent dans la hauteur demandee.
 
-  form1.setFrameColor(TFT_NAVY, TFT_SKYBLUE);
-  form1.initGUI(120, 70, 560, 340, TFT_DARKGREY, TFT_LIGHTGREY, TFT_BLACK, 2);
+  form1.setFrameColor(THEME_GRID, THEME_PANEL);
+  form1.initGUI(120, 70, 560, 340, THEME_GRID, THEME_TRACK, THEME_TEXT, 2);
   form1.setYear(2023);
   form1.setMonth(2);
   form1.setDay(1);
   
   for (int i = 0; i < 6; i++)
     menu1.setButtonLabel(i, label1[i]);
-  menu1.setFrameColor(TFT_NAVY, TFT_SKYBLUE);
-  menu1.initGUI(-1, -1, 380, 360, TFT_DARKGREY, TFT_LIGHTGREY, TFT_BLACK, 2);
+  menu1.setFrameColor(THEME_GRID, THEME_PANEL);
+  menu1.initGUI(-1, -1, 380, 360, THEME_GRID, THEME_TRACK, THEME_TEXT, 2);
 
   for (int i = 0; i < 3; i++)
     menu11.setButtonLabel(i, label11[i]);
-  menu11.setFrameColor(TFT_DARKGREY, TFT_LIGHTGREY);
-  menu11.initGUI(-1, -1, 380, 210, TFT_NAVY, TFT_SKYBLUE, TFT_BLACK, 2);
+  menu11.setFrameColor(THEME_GRID, THEME_PANEL);
+  menu11.initGUI(-1, -1, 380, 210, THEME_GRID, THEME_TRACK, THEME_TEXT, 2);
 
   for (int i = 0; i < 6; i++)
     menu12.setButtonLabel(i, label12[i]);
-  menu12.setFrameColor(TFT_DARKGREY, TFT_LIGHTGREY);
-  menu12.initGUI(-1, -1, 380, 350, TFT_NAVY, TFT_SKYBLUE, TFT_BLACK, 2);
+  menu12.setFrameColor(THEME_GRID, THEME_PANEL);
+  menu12.initGUI(-1, -1, 380, 350, THEME_GRID, THEME_TRACK, THEME_TEXT, 2);
 
   menu13.setButtonLabel(0, "*"+label13[0]+"*");
   for (int i = 1; i < 7; i++)
     menu13.setButtonLabel(i, label13[i]);
-  menu13.setFrameColor(TFT_DARKGREY, TFT_LIGHTGREY);
-  menu13.initGUI(-1, -1, 380, 410, TFT_NAVY, TFT_SKYBLUE, TFT_BLACK, 2);
+  menu13.setFrameColor(THEME_GRID, THEME_PANEL);
+  menu13.initGUI(-1, -1, 380, 410, THEME_GRID, THEME_TRACK, THEME_TEXT, 2);
 
   //-- Interface web : WiFi domestique (identifiants en NVS) ou point
   //   d'acces de secours "Barometre". Non bloquant : loop() s'occupe du reste.
@@ -637,7 +638,7 @@ void loop()
                    old_page == PAGE_TEMP_HIST || old_page == PAGE_PRES_HIST) {
           // Le canvas contenait le menu ou un historique : on repeint le
           // fond de la page de mesure avant que les widgets soient redessines.
-          tft.fillRectVGradient(0,0,UI_W,UI_H, TFT_YELLOW,  TFT_NAVY);
+          tft.fillRect(0,0,UI_W,UI_H, THEME_BG);
         }
         sensorDelay = 0;
         break;

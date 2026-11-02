@@ -310,6 +310,7 @@ bme280_local.cpp / bme280_local.h   in-house BME280 driver (I2C, Bosch formulas)
 i2c_bus.cpp / i2c_bus.h             shared I²C bus (legacy driver, required by ESP32_Display_Panel)
 datetime_local.h                    minimal DateTime type (avoids the RTClib dependency)
 Definition.h                        constants: delays, ranges, page numbers
+theme.h                             "marine instrument" screen palette
 esp_panel_board_supported_conf.h    board selection for ESP32_Display_Panel
 build_opt.h                         build option (canvas in PSRAM)
 extras/TFT_eSPI_User_Setup.h        TFT_eSPI configuration used

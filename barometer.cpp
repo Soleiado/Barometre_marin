@@ -7,6 +7,7 @@
 #include "rtc_clock.h"     // DS3231 / PCF85063A / horloge logicielle
 #include "Definition.h"
 #include "barometer.h"     // geometrie du bandeau d'informations (INFO_BAND_*)
+#include "theme.h"
 
 //---------------------------------------------------------------------
 // Geometrie du graphique et de ses bandeaux (canvas 800x480).
@@ -310,21 +311,16 @@ void mapPressureHistValues() {
 
 void drawPressureHistBg()
 {
-  graph->fillSprite(TFT_WHITE);
+  graph->fillSprite(THEME_PANEL);
 
-  // Cadre en degrade (8 px d'epaisseur)
-  graph->fillRectHGradient(           0,  0,  8, HIST_H, TFT_LIGHTGREY, TFT_DARKGREY);
-  graph->fillRectHGradient(HIST_W - 8,  0,  8, HIST_H, TFT_LIGHTGREY, TFT_DARKGREY);
-  graph->fillRectVGradient(           0,  0, HIST_W,     8, TFT_DARKGREY, TFT_LIGHTGREY);
-  graph->fillRectVGradient(           0, HIST_H - 8, HIST_W, 8, TFT_DARKGREY, TFT_LIGHTGREY);
+  // Cadre arrondi discret
+  graph->drawRoundRect(0, 0, HIST_W - 1, HIST_H - 1, 12, THEME_GRID);
 
-  // Ligne verte : pression standard (1013 hPa)
+  // Ligne de reference : pression standard (1013 hPa)
   if (normal_pressure_y > HIST_TOP - 6 && normal_pressure_y < HIST_BOTTOM + 6)
     graph->drawWideLine(HIST_LEFT - 10, normal_pressure_y, HIST_RIGHT + 10, normal_pressure_y,
-                        6, TFT_GREEN, TFT_GREEN);
+                        2, THEME_GREEN, THEME_GREEN);
 
-  // Libelles de pression : police vectorielle, un peu plus grande et plus
-  // lisible que la police bitmap 2 utilisee a l'origine.
   graph->setFreeFont(&FreeSansBold12pt7b);
 
   // Lignes horizontales tous les 5 hPa, libelle tous les 10 hPa
@@ -332,20 +328,20 @@ void drawPressureHistBg()
     int16_t y = HIST_TOP + i * HIST_PPMB;
 
     if (i % 10 == 0) {
-      graph->drawWideLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, 3, TFT_DARKGREY, TFT_DARKGREY);
+      graph->drawWideLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, 1, THEME_GRID, THEME_GRID);
 
-      graph->setTextColor(TFT_DARKGREY);
+      graph->setTextColor(THEME_DIM);
       graph->setTextDatum(CR_DATUM);
       graph->drawString(label[i / 10], HIST_LEFT - 14, y);
     } else {
-      graph->drawLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, TFT_LIGHTGREY);
+      graph->drawLine(HIST_LEFT - 10, y, HIST_RIGHT + 10, y, THEME_TRACK);
     }
   }
 
   // Lignes verticales : cinq segments reguliers sur l'axe des temps
   for (int k = 0; k <= 5; k++) {
     int16_t x = HIST_LEFT + k * (HIST_RIGHT - HIST_LEFT) / 5;
-    graph->drawLine(x, HIST_TOP - 10, x, HIST_BOTTOM, TFT_BLACK);
+    graph->drawLine(x, HIST_TOP - 10, x, HIST_BOTTOM, THEME_TRACK);
   }
 }
 
@@ -392,11 +388,11 @@ void drawPressureHist(float pres,  DateTime& now)
     if (meter_data[i] == NOPRESSHUM)
       continue;
 
-    uint32_t color = TFT_NAVY;
+    uint32_t color = THEME_ACCENT;
 
     if (i > 0 && meter_data[i - 1] != NOPRESSHUM) {
       if (meter_data[i - 1] - meter_data[i] >= drop_pressure * HIST_PPMB)
-        color = TFT_RED;
+        color = THEME_AMBER;
 
       int16_t px = HIST_LEFT + (int32_t)(i - 1) * (HIST_RIGHT - HIST_LEFT) / (w - 1);
       graph->drawLine(px, meter_data[i - 1], x, meter_data[i], color);
@@ -405,14 +401,13 @@ void drawPressureHist(float pres,  DateTime& now)
     graph->fillCircle(x, meter_data[i], 3, color);
   }
 
-  graph->drawRect(0, 0, HIST_W - 1, HIST_H - 1, TFT_BLACK);
   graph->pushToSprite(static_cast<TFT_eSprite *>(s_tft), HIST_X, HIST_Y);
 
   // Bandeau de titre
-  misc->fillRectVGradient(0, 0, HIST_W, TITLE_H, TFT_LIGHTGREY, TFT_DARKGREY);
-  misc->drawRect(0, 0, HIST_W - 1, TITLE_H - 1, TFT_BLACK);
+  misc->fillSprite(THEME_PANEL);
+  misc->drawRoundRect(0, 0, HIST_W - 1, TITLE_H - 1, 12, THEME_GRID);
   misc->setTextDatum(TC_DATUM);
-  misc->setTextColor(TFT_BLACK);
+  misc->setTextColor(THEME_ACCENT);
   misc->setTextFont(4);
   misc->drawString(title, HIST_W / 2 - 1, 9);
   misc->drawString(title, HIST_W / 2,     9);
@@ -425,9 +420,9 @@ void drawPressureHist(float pres,  DateTime& now)
   //     verticalement dans la hauteur du bandeau.
   char buf[25];
 
-  info->fillRectVGradient(0, 0, HIST_W, INFO_H, TFT_LIGHTGREY, TFT_DARKGREY);
-  info->drawRect(0, 0, HIST_W - 1, INFO_H - 1, TFT_BLACK);
-  info->setTextColor(TFT_BLACK);
+  info->fillSprite(THEME_PANEL);
+  info->drawRoundRect(0, 0, HIST_W - 1, INFO_H - 1, 12, THEME_GRID);
+  info->setTextColor(THEME_TEXT);
 
   const int16_t leftX  = HIST_W * 30 / 100;    // 136 : axe date / heure
   const int16_t rightX = HIST_W * 75 / 100;    // 342 : axe de la pression
@@ -448,15 +443,13 @@ void drawPressureHist(float pres,  DateTime& now)
   info->drawString(buf, leftX,     31);
   info->drawString(buf, leftX + 1, 31);
 
-  // Pression : plus grande, centree dans la moitie droite du bandeau
+  // Pression : accent teal, plus grande, centree a droite
   info->setFreeFont(&FreeSansBold18pt7b);
+  info->setTextColor(THEME_ACCENT);
   info->setTextDatum(MC_DATUM);
 
   sprintf(buf, "%.2f mb", pres);
-
-  info->drawString(buf, rightX - 1, INFO_H / 2);
-  info->drawString(buf, rightX,     INFO_H / 2);
-  info->drawString(buf, rightX + 1, INFO_H / 2);
+  info->drawString(buf, rightX, INFO_H / 2);
 
   info->pushToSprite(static_cast<TFT_eSprite *>(s_tft), HIST_X, INFO_Y);
 }
@@ -525,10 +518,10 @@ static void drawHistoryPage(const char *title,
   // Fond et bandeau de titre
   //-------------------------------------------------------------------
 
-  s_tft->fillRect(0, 0, FULL_W, FULL_H, TFT_WHITE);
+  s_tft->fillRect(0, 0, FULL_W, FULL_H, THEME_BG);
 
-  s_tft->fillRectVGradient(0, 0, FULL_W, FULL_TITLE_H, TFT_LIGHTGREY, TFT_DARKGREY);
-  s_tft->drawRect(0, 0, FULL_W - 1, FULL_TITLE_H - 1, TFT_BLACK);
+  s_tft->fillRect(0, 0, FULL_W, FULL_TITLE_H, THEME_PANEL);
+  s_tft->drawLine(0, FULL_TITLE_H - 1, FULL_W, FULL_TITLE_H - 1, THEME_GRID);
 
   // Le canvas est partage avec le menu, qui dessine son texte en taille 2
   // (dernier argument de initGUI) et laisse cette taille memorisee. Les
@@ -538,7 +531,7 @@ static void drawHistoryPage(const char *title,
   s_tft->setTextSize(1);
 
   s_tft->setFreeFont(&FreeSansBold18pt7b);
-  s_tft->setTextColor(TFT_BLACK);
+  s_tft->setTextColor(THEME_ACCENT);
   s_tft->setTextDatum(TC_DATUM);
   s_tft->drawString(title, FULL_W / 2 - 1, 8);
   s_tft->drawString(title, FULL_W / 2,     8);
@@ -546,6 +539,7 @@ static void drawHistoryPage(const char *title,
 
   // Rappel : un appui sur l'ecran revient a la page de mesure
   s_tft->setFreeFont(&FreeSansBold9pt7b);
+  s_tft->setTextColor(THEME_DIM);
   s_tft->setTextDatum(TR_DATUM);
   s_tft->drawString("tap: back", FULL_W - 10, 20);
 
@@ -564,16 +558,16 @@ static void drawHistoryPage(const char *title,
     int16_t y = FULL_PLOT_Y + (int16_t)lroundf((maxVal - v) * FULL_PLOT_H / (maxVal - minVal));
 
     if (n % stepsPerLabel == 0) {
-      s_tft->drawLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, TFT_DARKGREY);
+      s_tft->drawLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, THEME_GRID);
 
       char buf[10];
       snprintf(buf, sizeof(buf), "%d", (int)lroundf(v));
 
-      s_tft->setTextColor(TFT_DARKGREY);
+      s_tft->setTextColor(THEME_DIM);
       s_tft->setTextDatum(CR_DATUM);
       s_tft->drawString(buf, FULL_PLOT_X - 8, y);
     } else
-      s_tft->drawLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, TFT_LIGHTGREY);
+      s_tft->drawLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, THEME_TRACK);
   }
 
   // Ligne de reference (pression standard 1013 hPa) : en vert, si elle est
@@ -581,7 +575,7 @@ static void drawHistoryPage(const char *title,
   if (!isnan(refLine) && refLine >= minVal && refLine <= maxVal) {
     int16_t y = FULL_PLOT_Y + (int16_t)lroundf((maxVal - refLine) * FULL_PLOT_H / (maxVal - minVal));
 
-    s_tft->drawWideLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, 2, TFT_GREEN, TFT_GREEN);
+    s_tft->drawWideLine(FULL_PLOT_X, y, FULL_PLOT_X + FULL_PLOT_W, y, 2, THEME_GREEN, THEME_GREEN);
   }
 
   // Verticales regulieres : FULL_LABELS reperes repartis sur l'axe
@@ -589,10 +583,10 @@ static void drawHistoryPage(const char *title,
     int16_t idx = (int16_t)lroundf(k * (points - 1) / (float)(FULL_LABELS - 1));
     int16_t x   = FULL_PLOT_X + (int32_t)idx * FULL_PLOT_W / (points - 1);
 
-    s_tft->drawLine(x, FULL_PLOT_Y, x, FULL_PLOT_Y + FULL_PLOT_H, TFT_LIGHTGREY);
+    s_tft->drawLine(x, FULL_PLOT_Y, x, FULL_PLOT_Y + FULL_PLOT_H, THEME_TRACK);
   }
 
-  s_tft->drawRect(FULL_PLOT_X, FULL_PLOT_Y, FULL_PLOT_W + 1, FULL_PLOT_H + 1, TFT_BLACK);
+  s_tft->drawRect(FULL_PLOT_X, FULL_PLOT_Y, FULL_PLOT_W + 1, FULL_PLOT_H + 1, THEME_GRID);
 
   //-------------------------------------------------------------------
   // Courbe
@@ -620,10 +614,10 @@ static void drawHistoryPage(const char *title,
 
     int16_t y = FULL_PLOT_Y + (int16_t)lroundf((maxVal - v) * FULL_PLOT_H / (maxVal - minVal));
 
-    uint32_t color = TFT_NAVY;
+    uint32_t color = THEME_ACCENT;
 
     if (havePrev && dropValue > 0.0f && (prevV - v) >= dropValue)
-      color = TFT_RED;
+      color = THEME_AMBER;
 
     if (havePrev)
       s_tft->drawWideLine(prevX, prevY, x, y, 2, color, color);
@@ -643,7 +637,7 @@ static void drawHistoryPage(const char *title,
   //-------------------------------------------------------------------
 
   s_tft->setFreeFont(&FreeSansBold9pt7b);
-  s_tft->setTextColor(TFT_BLACK);
+  s_tft->setTextColor(THEME_TEXT);
   s_tft->setTextDatum(TC_DATUM);
 
   uint32_t nowsec = now.unixtime();
@@ -668,9 +662,9 @@ static void drawHistoryPage(const char *title,
     if (d == 0) strcpy(day, "j");
     else snprintf(day, sizeof(day), "j%d", (int)d);
 
-    s_tft->setTextColor(TFT_DARKGREY);
+    s_tft->setTextColor(THEME_DIM);
     s_tft->drawString(day, x, FULL_XLABEL_Y + 14);
-    s_tft->setTextColor(TFT_BLACK);
+    s_tft->setTextColor(THEME_TEXT);
   }
 }
 

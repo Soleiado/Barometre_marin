@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "meter.h"
+#include "theme.h"
 
 //--------------------------------------------------------------------------------------
 // Geometrie du cadran (canvas 800x480).
@@ -153,36 +154,33 @@ void Meter::setOrigin(int16_t orig_x, int16_t orig_y)
 
 void Meter::draw_meter_frame()
 {
-  _frame->fillSprite(TFT_WHITE);
+  // Fond transparent (le canvas principal est deja sombre), puis panneau
+  // arrondi et discret.
+  _frame->fillSprite(THEME_BG);
+  _frame->fillRoundRect(0, 0, METER_W, METER_H, 16, THEME_PANEL);
+  _frame->drawRoundRect(0, 0, METER_W - 1, METER_H - 1, 16, THEME_GRID);
 
-  // Cadre en degrade (8 px d'epaisseur)
-  _frame->fillRectHGradient(            0,  0,   8, METER_H, TFT_LIGHTGREY, TFT_DARKGREY);
-  _frame->fillRectHGradient(METER_W - 8,  0,   8, METER_H, TFT_LIGHTGREY, TFT_DARKGREY);
-  _frame->fillRectVGradient(            0,  0, METER_W,     8, TFT_DARKGREY,  TFT_LIGHTGREY);
-  _frame->fillRectVGradient(            0, METER_H - 8, METER_W, 8, TFT_DARKGREY, TFT_LIGHTGREY);
+  // Piste du cadran : arc fin
+  _frame->drawArc(METER_CX, METER_CY, METER_R, METER_R - 3, 120, 240,
+                  THEME_TRACK, THEME_PANEL);
 
-  _frame->setTextFont(2);
-
-  // Piste du cadran, puis les zones colorees (8 px de large)
-  _frame->drawArc(METER_CX, METER_CY, METER_R, METER_R, 120, 240, TFT_BLACK, TFT_WHITE);
-
+  // Zones colorees (3 px), bouts arrondis
   for (int i = 0; i < _nb_zones; i++) {
     int16_t s = map(_zone_start[i], _start, _end, 120, 240);
     int16_t e = map(_zone_end[i], _start, _end, 120, 240);
 
-    _frame->drawArc(METER_CX, METER_CY, METER_R, METER_R - 8, s, e, _zone_color[i], TFT_BLACK);
+    _frame->drawSmoothArc(METER_CX, METER_CY, METER_R, METER_R - 3, s, e,
+                          _zone_color[i], THEME_PANEL, true);
   }
 
-  const int16_t inc      = 6;    // pas des graduations (degres)
-  const int16_t tl_long  = 26;   // longueur des grandes graduations
-  const int16_t tl_short = 14;   // longueur des petites
+  const int16_t inc      = 15;   // pas des graduations (degres)
+  const int16_t tl_long  = 18;   // longueur des grandes graduations
+  const int16_t tl_short = 9;    // longueur des petites
 
-  // Chiffres de l'echelle : police vectorielle, un peu plus grande que la
-  // police bitmap 2 utilisee a l'origine.
-  _frame->setFreeFont(&FreeSansBold12pt7b);
-  _frame->setTextColor(TFT_BLACK);
+  // Graduations et chiffres : fins et discrets
+  _frame->setFreeFont(&FreeSansBold9pt7b);
+  _frame->setTextColor(THEME_DIM);
 
-  // Graduations de -60 a +60 degres autour de la verticale
   for (int i = -60; i < 61; i += inc) {
     float sx = cos((i - 90) * 0.0174532925);
     float sy = sin((i - 90) * 0.0174532925);
@@ -194,9 +192,9 @@ void Meter::draw_meter_frame()
     int16_t x1 = sx * METER_R + METER_CX;
     int16_t y1 = sy * METER_R + METER_CY;
 
-    _frame->drawLine(x0, y0, x1, y1, TFT_BLACK);
+    _frame->drawLine(x0, y0, x1, y1, (i % 30 == 0) ? THEME_DIM : THEME_GRID);
 
-    // Une graduation sur cinq porte une valeur
+    // Une graduation sur deux porte une valeur
     if (i % 30 == 0) {
       char buf[10];
 
@@ -209,25 +207,23 @@ void Meter::draw_meter_frame()
       }
 
       _frame->setTextDatum(BC_DATUM);
-      _frame->drawString(buf, x0, y0 - 3);
+      _frame->drawString(buf, x0, y0 - 2);
     }
   }
 
-  _frame->setFreeFont(&FreeMonoBoldOblique9pt7b);
-  _frame->setTextColor(TFT_BLACK);
+  // Libelle du cadran : discret
+  _frame->setFreeFont(&FreeSansBold9pt7b);
+  _frame->setTextColor(THEME_DIM);
   _frame->setTextDatum(TC_DATUM);
-  _frame->drawString(_label1, METER_CX, 112);
+  _frame->drawString(_label1, METER_CX, 118);
 
-  // Valeurs (humidite, temperature) : c'est la lecture principale du cadran,
-  // elles passent en 18pt alors que l'echelle reste en 12pt, et sont placees
-  // au plus pres du bas du cadre.
+  // Valeur courante : grande et lumineuse
   _frame->setFreeFont(&FreeSansBold18pt7b);
+  _frame->setTextColor(THEME_TEXT);
   _frame->setTextDatum(TL_DATUM);
   _frame->drawString(_label2, 16, 184);
   _frame->setTextDatum(TR_DATUM);
   _frame->drawString(_label3, METER_W - 16, 184);
-
-  _frame->drawRect(0, 0, METER_W - 1, METER_H - 1, TFT_BLACK);
 }
 
 //--------------------------------------------------------------------------------------
@@ -240,10 +236,11 @@ void Meter::move_needle()
 {
   float sdeg = map(_ivalue, _start, _end, -60, 60);  // Map value to angle
 
-  _needle->fillSprite(TFT_BLACK);
-  _needle->drawWedgeLine(6, 0, 6, METER_R, 2, 7, TFT_RED);
-  _needle->fillCircle(6, METER_R, 6, TFT_NAVY);
-  _needle->pushRotated(_frame, sdeg, TFT_BLACK);  
+  // Aiguille fine, ambre, avec un petit moyeu.
+  _needle->fillSprite(THEME_BG);
+  _needle->drawWedgeLine(6, 0, 6, METER_R, 1, 3, THEME_AMBER);
+  _needle->fillCircle(6, METER_R, 4, THEME_AMBER);
+  _needle->pushRotated(_frame, sdeg, THEME_BG);
 }
 
 //--------------------------------------------------------------------------------------
