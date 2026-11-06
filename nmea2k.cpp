@@ -45,9 +45,10 @@ tNMEA2000 &NMEA2000 = *(new NMEA2000_esp32_twai(ESP32_CAN_TX_PIN, ESP32_CAN_RX_P
 //---------------------------------------------------------------------
 
 #define SlowDataUpdatePeriod 1000  // periode d'emission des PGN (ms)
-#define TempSendOffset          0  // +   0 ms
-#define HumiditySendOffset     50  // +  50 ms
-#define PressureSendOffset    100  // + 100 ms
+#define TempSendOffset1         0  // +   0 ms
+#define TempSendOffset2        50  // +   0 ms
+#define HumiditySendOffset    100// + 100ms
+#define PressureSendOffset    150 // + 15 ms
 
 #define N2K_STATUS_PERIOD   10000  // periode de la trace d'etat (ms)
 
@@ -59,9 +60,11 @@ static uint32_t s_sent    = 0;     // PGN acceptes par le controleur
 static uint32_t s_failed  = 0;     // PGN refuses (file pleine, bus off...)
 
 // Messages annonces sur le bus
-const unsigned long TransmitMessages[] PROGMEM = {130316L, // Temperature
+const unsigned long TransmitMessages[] PROGMEM = {
+												  130312L, // Temperature
                                                   130313L, // Humidite
                                                   130314L, // Pression
+												  130316L, // Temperature
                                                   0
                                                  };
 
@@ -187,9 +190,25 @@ static void SetNextUpdate(unsigned long &NextUpdate, unsigned long Period)
 
 //---------------------------------------------------------------------
 
-void SendN2kTemperature(float temp)
+void SendN2kTemperature1(float temp)
 {
-  static unsigned long SlowDataUpdated = InitNextUpdate(SlowDataUpdatePeriod, TempSendOffset);
+  static unsigned long SlowDataUpdated = InitNextUpdate(SlowDataUpdatePeriod, TempSendOffset1);
+  tN2kMsg N2kMsg;
+
+  if (IsTimeToUpdate(SlowDataUpdated)) {
+    SetNextUpdate(SlowDataUpdated, SlowDataUpdatePeriod);
+
+    SetN2kPGN130312(N2kMsg, 0, 0, N2kts_InsideTemperature, CToKelvin(temp), N2kDoubleNA);
+
+    n2kSend(N2kMsg);
+  }
+}
+
+//---------------------------------------------------------------------
+
+void SendN2kTemperature2(float temp)
+{
+  static unsigned long SlowDataUpdated = InitNextUpdate(SlowDataUpdatePeriod, TempSendOffset2);
   tN2kMsg N2kMsg;
 
   if (IsTimeToUpdate(SlowDataUpdated)) {
@@ -271,7 +290,8 @@ void nmea2KOutput(int8_t humidity, float temp, float pres)
 {
   nmea2KInit();
 
-  SendN2kTemperature(temp);
+  SendN2kTemperature1(temp);
+  SendN2kTemperature2(temp);
   SendN2kHumidity(humidity);
   SendN2kPressure(pres);
 

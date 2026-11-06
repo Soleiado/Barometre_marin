@@ -75,8 +75,8 @@ values and chart on the web page.*
 
 ### NMEA
 
-- **NMEA 2000** on the CAN bus: PGN 130316 (temperature), 130313 (humidity) and
-  130314 (pressure), sent once per second.
+- **NMEA 2000** on the CAN bus: PGN 130312 and 130316 (temperature), 130313
+  (humidity) and 130314 (pressure), sent once per second.
 - **NMEA 0183** on the RS485 port: `$WIXDR` sentence (humidity, temperature,
   pressure) every 10 s, baud rate selectable from 4800 to 38400, or output
   disabled.
@@ -284,7 +284,7 @@ and is only enabled from the web settings page ("SD logging" tile).
 
 | Output | Medium | Content | Period |
 |---|---|---|---|
-| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) and 16 (RX) | PGN 130316 (temperature, extended range), 130313 (humidity), 130314 (pressure) | 1 s |
+| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) and 16 (RX) | PGN 130312 and 130316 (temperature, extended range), 130313 (humidity), 130314 (pressure) | 1 s |
 | NMEA 0183 | RS485, GPIO 44 (TX) and 43 (RX) | `$WIXDR`: humidity, air temperature, barometric pressure | 10 s |
 
 Example NMEA 0183 sentence:

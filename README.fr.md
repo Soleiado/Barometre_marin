@@ -77,8 +77,8 @@ carte, les valeurs en direct et le graphique sur la page web.*
 
 ### NMEA
 
-- **NMEA 2000** sur le bus CAN : PGN 130316 (température), 130313 (humidité) et
-  130314 (pression), émis une fois par seconde.
+- **NMEA 2000** sur le bus CAN : PGN 130312 et 130316 (température), 130313
+  (humidité) et 130314 (pression), émis une fois par seconde.
 - **NMEA 0183** sur le port RS485 : trame `$WIXDR` (humidité, température,
   pression) toutes les 10 s, débit configurable de 4800 à 38400 bauds, ou
   sortie désactivée.
@@ -289,7 +289,7 @@ par défaut** et ne s'active que depuis la page Réglages de l'interface web
 
 | Sortie | Support | Contenu | Période |
 |---|---|---|---|
-| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) et 16 (RX) | PGN 130316 (température, plage étendue), 130313 (humidité), 130314 (pression) | 1 s |
+| NMEA 2000 | CAN / TWAI, GPIO 15 (TX) et 16 (RX) | PGN 130312 et 130316 (température, plage étendue), 130313 (humidité), 130314 (pression) | 1 s |
 | NMEA 0183 | RS485, GPIO 44 (TX) et 43 (RX) | `$WIXDR` : humidité, température de l'air, pression barométrique | 10 s |
 
 Exemple de trame NMEA 0183 :
