@@ -210,21 +210,75 @@ static void appendSample(float pres, float temp, int16_t hum)
 }
 
 //====================================================
+// Chargement d'une mesure avec son horodatage (pour la
+// recuperation depuis la carte SD). Meme operation que
+// appendSample, mais "maintenant" est remplace par la
+// date fournie.
+//====================================================
+
+void barometerLoadSample(int16_t pres, int16_t temp10, int16_t hum, uint32_t unixTime)
+{
+  shiftSeries(pressure_data);
+  shiftSeries(hum_data);
+  shiftSeries(temp_data);
+
+  pressure_data[HIST_SLOTS - 1] = pres;
+  hum_data[HIST_SLOTS - 1]      = hum;
+  temp_data[HIST_SLOTS - 1]     = temp10;
+
+  if (histCount < HIST_SLOTS)
+    histCount++;
+
+  last_update = DateTime(unixTime);
+}
+
+//====================================================
+// Cadence d'enregistrement (15 min). Deux modes :
+//   - libre (s_nextSave == 0) : 15 min depuis la derniere
+//     sauvegarde, la premiere etant immediate ;
+//   - planifiee (apres recuperation SD) : a l'echeance
+//     absolue s_nextSave, puis + 15 min a chaque fois.
+//====================================================
+
+static uint32_t s_nextSave = 0;
+
+bool barometerTimeToSave()
+{
+  static unsigned long last_ms = millis();
+  static bool         first    = true;
+
+  if (s_nextSave != 0) {
+    if (rtcClockNow().unixtime() >= s_nextSave) {
+      s_nextSave += SAVE_DATA_DELAY / 1000;
+      return true;
+    }
+
+    return false;
+  }
+
+  if (millis() - last_ms > SAVE_DATA_DELAY || first) {
+    last_ms = millis();
+    first    = false;
+    return true;
+  }
+
+  return false;
+}
+
+void barometerAlignNextSave(uint32_t unixTime)
+{
+  s_nextSave = unixTime;
+}
+
+//====================================================
 // saveHistoricalValues: ajoute la mesure courante au
-// buffer, une fois toutes les 15 min (SAVE_DATA_DELAY).
+// buffer. La cadence est geree par barometerTimeToSave(),
+// appelee par getSensorData().
 //====================================================
 
 void saveHistoricalValues(float pres, float temp, int16_t hum)
 {
-  static unsigned long last_time = millis();
-  static bool         first_time = true;
-
-  if (millis() - last_time > SAVE_DATA_DELAY || first_time) {
-    appendSample(pres, temp, hum);
-
-    last_time  = millis();
-    first_time = false;
-  }
+  appendSample(pres, temp, hum);
 }
 
 //====================================================

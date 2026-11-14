@@ -9,11 +9,13 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <SD.h>
-#include <Preferences.h>
+#include <string.h>
+#include <math.h>
 
 #include "Definition.h"
 #include "datetime_local.h"
 #include "rtc_clock.h"
+#include "barometer.h"  // barometerLoadSample() pour la recuperation
 #include "screen.h"     // ch422SetIOBit() : chip-select du slot TF (EXIO4)
 
 //---------------------------------------------------------------------
@@ -32,30 +34,6 @@
 static bool s_enabled     = false;
 static bool s_present     = false;
 static int  s_lastCheckDay = -1;
-
-//---------------------------------------------------------------------
-// Reglages persistants (NVS "baro", cle "log")
-//---------------------------------------------------------------------
-
-static bool loadSetting()
-{
-  Preferences p;
-
-  p.begin("baro", true);
-  bool on = p.getBool("log", false);
-  p.end();
-
-  return on;
-}
-
-static void saveSetting(bool on)
-{
-  Preferences p;
-
-  p.begin("baro", false);
-  p.putBool("log", on);
-  p.end();
-}
 
 //---------------------------------------------------------------------
 // Montage de la carte
@@ -85,38 +63,14 @@ static bool mountCard()
 
 bool sdlogInit()
 {
-  s_enabled = loadSetting();
-
-  // On monte toujours la carte pour connaitre son etat (presente/absente)
-  // et l'afficher dans la page Reglages, meme si l'enregistrement est coupe.
+  // Des qu'une carte est presente, l'enregistrement est actif : plus de
+  // reglage manuel.
   if (!mountCard()) {
-    if (s_enabled) {
-      // Reglage active mais pas de carte : on repasse l'option a off.
-      s_enabled = false;
-      saveSetting(false);
-    }
+    s_enabled = false;
     return false;
   }
 
-  return true;
-}
-
-//---------------------------------------------------------------------
-
-bool sdlogSetEnabled(bool on)
-{
-  if (on && !s_present) {
-    // Carte inseree apres le demarrage : on la monte maintenant.
-    if (!mountCard()) {
-      s_enabled = false;
-      saveSetting(false);
-      return false;
-    }
-  }
-
-  s_enabled = on;
-  saveSetting(on);
-
+  s_enabled = true;
   return true;
 }
 
@@ -160,22 +114,132 @@ static void deleteOldestCsv()
 }
 
 //---------------------------------------------------------------------
-// Ajout d'une mesure (une ligne toutes les 15 minutes)
+// Recuperation de l'historique depuis la carte SD
+//
+// Les mesures sont relues dans les fichiers quotidiens (AAAAMMJJ.csv) :
+// les 384 dernieres (96 h) sont conservees, puis rechargees dans le
+// buffer d'historique selon l'ecart avec l'heure courante :
+//   - ecart < 15 min : prochain enregistrement cale sur le dernier ;
+//   - 15 min <= ecart < 1 h : l'ecart est simule avec la derniere valeur ;
+//   - ecart >= 1 h (ou horloge incoherente) : pas de recuperation.
+//---------------------------------------------------------------------
+
+struct SdSample {
+  uint32_t ts;      // unix time
+  int16_t  pres;    // hPa (entier)
+  int16_t  temp;    // 0,1 degre C
+  int16_t  hum;     // %
+};
+
+static SdSample s_samples[HIST_SLOTS];
+static int16_t  s_sampleCount = 0;
+
+static void addSample(uint32_t ts, int16_t pres, int16_t temp, int16_t hum)
+{
+  if (s_sampleCount < HIST_SLOTS) {
+    SdSample &s = s_samples[s_sampleCount++];
+    s.ts = ts; s.pres = pres; s.temp = temp; s.hum = hum;
+  } else {
+    // Buffer plein : on decale et on ne garde que les plus recents.
+    memmove(s_samples, s_samples + 1, (HIST_SLOTS - 1) * sizeof(SdSample));
+    SdSample &s = s_samples[HIST_SLOTS - 1];
+    s.ts = ts; s.pres = pres; s.temp = temp; s.hum = hum;
+  }
+}
+
+static void readCsvFile(const char *path)
+{
+  File f = SD.open(path);
+  if (!f) return;
+
+  while (f.available()) {
+    String line = f.readStringUntil('\n');
+    line.trim();
+    if (line.length() < 16) continue;   // "AAAAMMJJHHMM,..." fait au moins 16 car.
+
+    unsigned long long ymdhm = 0;    // AAAAMMJJHHMM : 12 chiffres, il faut du 64 bits
+    float  pres = 0.0f, temp = 0.0f;
+    int    hum  = 0;
+
+    if (sscanf(line.c_str(), "%llu,%f,%f,%d", &ymdhm, &pres, &temp, &hum) != 4)
+      continue;
+
+    uint16_t y  = (uint16_t)(ymdhm / 100000000ULL);
+    uint16_t mo = (uint16_t)((ymdhm / 1000000ULL) % 100);
+    uint16_t d  = (uint16_t)((ymdhm / 10000ULL) % 100);
+    uint8_t  h  = (uint8_t)((ymdhm / 100ULL) % 100);
+    uint8_t  mi = (uint8_t)(ymdhm % 100);
+
+    DateTime dt(y, mo, d, h, mi, 0);
+    if (!dt.isValid()) continue;
+
+    addSample(dt.unixtime(), (int16_t)lroundf(pres), (int16_t)lroundf(temp * 10.0f), (int16_t)hum);
+  }
+
+  f.close();
+}
+
+//---------------------------------------------------------------------
+
+bool sdlogRecover()
+{
+  if (!s_present) return false;
+  if (!rtcClockIsHardware()) return false;   // horloge logicielle : heure peu fiable
+
+  s_sampleCount = 0;
+
+  // Relire les 5 derniers jours (chronologiquement), en gardant les 384
+  // enregistrements les plus recents (96 h).
+  DateTime now = rtcClockNow();
+
+  for (int off = 4; off >= 0; off--) {
+    DateTime day(now.unixtime() - (uint32_t)off * 86400UL);
+
+    char path[24];
+    snprintf(path, sizeof(path), "/%04d%02d%02d.csv", day.year(), day.month(), day.day());
+
+    readCsvFile(path);
+  }
+
+  if (s_sampleCount == 0) return false;
+
+  const SdSample &last = s_samples[s_sampleCount - 1];
+  int64_t gap = (int64_t)now.unixtime() - (int64_t)last.ts;
+
+  // Ecart incoherent (horloge remise a zero) ou >= 1 h : pas de recuperation.
+  if (gap < 0 || gap >= 3600) return false;
+
+  // Recharger les mesures recuperees.
+  for (int16_t i = 0; i < s_sampleCount; i++)
+    barometerLoadSample(s_samples[i].pres, s_samples[i].temp, s_samples[i].hum, s_samples[i].ts);
+
+  if (gap < 900) {
+    // Cas 1 : ecart < 15 min -> prochain enregistrement cale sur le dernier.
+    barometerAlignNextSave(last.ts + 900);
+  } else {
+    // Cas 2 : 15 min <= ecart < 1 h -> simuler l'ecart avec la derniere valeur.
+    uint32_t t = last.ts;
+
+    while (t + 900 <= now.unixtime()) {
+      t += 900;
+      barometerLoadSample(last.pres, last.temp, last.hum, t);
+    }
+
+    barometerAlignNextSave(t + 900);
+  }
+
+  return true;
+}
+
+//---------------------------------------------------------------------
+// Ajout d'une mesure. La cadence est geree par barometerTimeToSave(),
+// appelee par getSensorData().
 //---------------------------------------------------------------------
 
 void sdlogUpdate(float pres, float tempC, int16_t hum)
 {
   if (!s_enabled || !s_present)
     return;
-
-  static unsigned long last_time  = millis();
-  static bool         first_time  = true;
-
-  if (millis() - last_time < SAVE_DATA_DELAY && !first_time)
-    return;
-
-  last_time  = millis();
-  first_time = false;
 
   DateTime now = rtcClockNow();
 
@@ -198,7 +262,6 @@ void sdlogUpdate(float pres, float tempC, int16_t hum)
     // Carte retiree ou pleine : on desactive l'enregistrement.
     s_present = false;
     s_enabled = false;
-    saveSetting(false);
     return;
   }
 

@@ -107,8 +107,8 @@ enum : uint8_t {
   TX_RTC_LOST, TX_RTC_HW_OK, TX_RTC_SOFT, TX_BACK,
   TX_SSID, TX_PASS, TX_SAVE_RESTART, TX_WIFI_NOTE, TX_BACK_SHORT,
   TX_SSID_EMPTY, TX_SAVED_TITLE, TX_REBOOT_JOIN, TX_RECONNECT, TX_NADA,
-  TX_SDLOG, TX_SDLOG_ENABLE, TX_SDLOG_CARD, TX_SDLOG_PRESENT, TX_SDLOG_ABSENT,
-  TX_SDLOG_PCT, TX_SDLOG_NOCARD, TX_SDLOG_NOTE, TX_HUMCAL, TX_HUMCAL_OFFSET
+  TX_SDLOG, TX_SDLOG_CARD, TX_SDLOG_PRESENT, TX_SDLOG_ABSENT,
+  TX_SDLOG_PCT, TX_SDLOG_ACTIVE, TX_SDLOG_NOTE, TX_HUMCAL, TX_HUMCAL_OFFSET
 };
 
 static const WebText kText[] = {
@@ -194,13 +194,11 @@ static const WebText kText[] = {
     "fails), then open http://barometre.local/ or http://192.168.4.1/" },
   { "introuvable",                                 "not found" },
   { "Enregistrement SD",                           "SD logging" },
-  { "Enregistrer les mesures sur la carte SD",     "Log measurements to the SD card" },
   { "Carte SD :",                                  "SD card:" },
   { "presente",                                    "present" },
   { "absente",                                     "absent" },
   { "occupee a %d %%",                             "%d%% used" },
-  { "Pas de carte SD : l'enregistrement reste desactive.",
-    "No SD card: logging stays disabled." },
+  { "enregistrement actif",                        "logging active" },
   { "Un fichier AAAAMMJJ.csv est cree chaque jour ; au-dela de 90 %% "
     "d'occupation, le plus ancien est supprime.",
     "One AAAAMMJJ.csv file is created per day; above 90%% usage the oldest "
@@ -770,14 +768,7 @@ static void handleParamsPage()
   //--- Enregistrement SD ----------------------------------------------
   page += F("<h2>");
   page += T(TX_SDLOG);
-  page += F("</h2><form method=\"post\" action=\"/params\"><label class=\"inline\">"
-            "<input type=\"checkbox\" name=\"log\" value=\"1\"");
-  if (sdlogEnabled()) page += F(" checked");
-  page += F("> ");
-  page += T(TX_SDLOG_ENABLE);
-  page += F("</label><button>");
-  page += T(TX_SAVE);
-  page += F("</button></form><p class=\"note\">");
+  page += F("</h2><p class=\"note\">");
   page += T(TX_SDLOG_CARD);
   page += F(" ");
 
@@ -793,6 +784,9 @@ static void handleParamsPage()
       page += buf;
       page += ")";
     }
+
+    page += " - ";
+    page += T(TX_SDLOG_ACTIVE);
   } else {
     page += T(TX_SDLOG_ABSENT);
   }
@@ -800,12 +794,6 @@ static void handleParamsPage()
   page += F("</p><p class=\"note\">");
   page += T(TX_SDLOG_NOTE);
   page += F("</p>");
-
-  if (server.hasArg("sderror")) {
-    page += F("<div class=\"ko\">");
-    page += T(TX_SDLOG_NOCARD);
-    page += F("</div>");
-  }
 
   //--- Reseau WiFi ---------------------------------------------------
   page += F("<h2>");
@@ -890,8 +878,6 @@ static void handleParamsPage()
 
 static void handleParamsSave()
 {
-  bool sdError = false;
-
   if (server.hasArg("lang"))
     s_lang = (server.arg("lang") == "en") ? LANG_EN : LANG_FR;
 
@@ -913,13 +899,6 @@ static void handleParamsSave()
     humidity_cal = (int8_t)v;
   }
 
-  // Enregistrement SD : la case n'est presente dans la requete que si
-  // elle est cochee. Sans carte, sdlogSetEnabled remet l'option a off.
-  if (server.hasArg("log"))
-    sdError = !sdlogSetEnabled(true);
-  else
-    sdlogSetEnabled(false);
-
   prefs.begin("baro", false);
   prefs.putUChar("lang", s_lang);
   prefs.putBool("fah", bfahrenheit);
@@ -930,7 +909,7 @@ static void handleParamsSave()
   uiSettingsChanged();          // menu tactile + redessin de la page
   Screen::restartPanel();       // l'ecriture en flash a pu bousculer la dalle
 
-  server.sendHeader("Location", sdError ? "/params?sderror=1" : "/params?saved=1");
+  server.sendHeader("Location", "/params?saved=1");
   server.send(303, "text/plain", "");
 }
 

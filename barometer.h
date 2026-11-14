@@ -49,6 +49,21 @@ void saveHistoricalValues(float pres, float temp, int16_t hum);
 void initBarometer(TFT_eSPI *tft);
 
 //---------------------------------------------------------------------
+// Recuperation de l'historique (utilisee par sdlog.cpp)
+//---------------------------------------------------------------------
+
+// Charge une mesure dans le buffer avec son horodatage (au lieu de
+// "maintenant") : pres en hPa, temp10 en 0,1 degre C, hum en %.
+void barometerLoadSample(int16_t pres, int16_t temp10, int16_t hum, uint32_t unixTime);
+
+// Cadence d'enregistrement : vrai quand il est temps d'enregistrer (une
+// fois toutes les 15 min, ou a l'echeance planifiee apres recuperation).
+bool barometerTimeToSave();
+
+// Planifie le prochain enregistrement a un instant absolu (unix time).
+void barometerAlignNextSave(uint32_t unixTime);
+
+//---------------------------------------------------------------------
 // Lecture des series d'historique, pour l'interface web (webui.cpp) et
 // l'affichage. Il n'y a qu'un buffer de 384 mesures (96 h a 15 min) ;
 // "hours" (6, 12, 24 ou 96) choisit la fenetre affichee :

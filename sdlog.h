@@ -11,9 +11,10 @@
 //      AAAAMMJJHHMM,NNNN.N,-NN.N,NN
 //      (date/heure, pression mb, temperature C, humidite %)
 //
-//  L'enregistrement est coupe par defaut (reglage NVS "log"). S'il est
-//  active sans carte presente, il est remis a off. Quand la carte est
-//  pleine a 90 %, le fichier le plus ancien est supprime.
+//  L'enregistrement est automatique des qu'une carte est presente (aucun
+//  reglage manuel). Quand la carte est pleine a 90 %, le fichier le plus
+//  ancien est supprime. L'historique peut etre recupere au demarrage
+//  (voir sdlogRecover).
 //=====================================================================
 
 #ifndef _INC_SDLOG_H
@@ -21,17 +22,20 @@
 
 #include <stdint.h>
 
-// Charge le reglage et monte la carte si l'enregistrement est active.
+// Charge le reglage et monte la carte. Des qu'une carte est presente,
+// l'enregistrement est actif automatiquement (plus de reglage manuel).
 // Retourne true si la carte est montee.
 bool sdlogInit();
+
+// Recuperation de l'historique depuis la carte SD apres un redemarrage.
+// A appeler une fois au demarrage, apres sdlogInit(). Retourne true si
+// l'historique a ete reconstruit.
+bool sdlogRecover();
 
 // A appeler a chaque lecture : ajoute une ligne toutes les 15 min.
 void sdlogUpdate(float pres, float tempC, int16_t hum);
 
-// Active / coupe l'enregistrement (persiste en NVS). Retourne false si
-// l'activation echoue (pas de carte) : dans ce cas l'option reste off.
-bool sdlogSetEnabled(bool on);
-bool sdlogEnabled();
+bool sdlogEnabled();            // carte presente et enregistrement actif
 bool sdlogPresent();            // carte montee et accessible
 
 // Occupation de la carte en % (0..100), ou -1 si indisponible.

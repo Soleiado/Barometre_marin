@@ -68,7 +68,7 @@ values and chart on the web page.*
   stays in English).
 - Settings page: language, display restart (without losing history), board
   restart, temperature unit, NMEA 0183 baud rate, humidity calibration offset,
-  WiFi network, date and time, SD card logging.
+  WiFi network, date and time, SD card status.
 - Connection to the home network, with an automatic fallback access point when
   the network is missing. Settings stored in NVS (flash memory) and reloaded at
   boot.
@@ -220,7 +220,7 @@ the same page lets you enter the home network credentials.
 | Page | Content |
 |---|---|
 | `/` | current values, history chart, settings link |
-| `/params` | language, display, units, NMEA output, WiFi network, date and time, SD logging |
+| `/params` | language, display, units, NMEA output, WiFi network, date and time, SD card status |
 | `/wifi` | SSID and password entry (restarts the board) |
 
 ### JSON API
@@ -253,13 +253,13 @@ Saved in NVS (namespace `baro`) and reloaded at boot:
 | `fah` | temperature unit (Fahrenheit when true) |
 | `nmea` | NMEA 0183 baud rate (0 = N2K only) |
 | `humcal` | humidity calibration offset (in %) |
-| `log` | SD card logging (enabled when true) |
 | `LastNodeAddress` | NMEA 2000 node address |
 
 ## SD card
 
-The microSD (TF) slot can log the measurements. The option is **off by default**
-and is only enabled from the web settings page ("SD logging" tile).
+The microSD (TF) slot archives the measurements. **As soon as a card is present,
+logging is active automatically** (no manual setting); the status is shown on the
+settings page.
 
 - **Format**: **FAT32** card (or FAT16 for cards ≤ 2 GB). exFAT and NTFS are not
   supported.
@@ -270,13 +270,13 @@ and is only enabled from the web settings page ("SD logging" tile).
   ```
   i.e. `date/time (AAAAMMJJHHMM), pressure (mb), temperature (°C), humidity (%)`,
   comma separator, dot decimals.
-- **No card**: if the option is enabled while no card is present, a message is
-  shown and the option is switched back off. A card removal is detected at the
-  next write (within 15 min) and also disables the option.
-- **Hot insert / remove**: the card is not detected automatically. After
-  inserting it, re-enable the option on the settings page.
 - **Card full**: when the card reaches 90% usage, the oldest file is deleted
   (checked once per day).
+- **Recovery after a power cut**: at boot, if a card is present and the clock has
+  kept the time, the history is rebuilt from the CSV. Depending on the gap with
+  the last measurement: **under 15 min** → the next recording is aligned to the
+  last one; **between 15 min and 1 h** → the gap is simulated with the last
+  value; **over 1 h** → the history starts over.
 - The TF slot is wired in **SPI** (MOSI = GPIO 11, SCK = GPIO 12, MISO = GPIO 13),
   the chip-select being the **EXIO4** output of the CH422G expander.
 

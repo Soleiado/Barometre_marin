@@ -381,6 +381,10 @@ void backLight(bool onOff)
 
 void getSensorData()
 {
+  // Est-ce le moment d'enregistrer (cadence 15 min, eventuellement
+  // realignee apres une recuperation depuis la carte SD) ?
+  bool doSave = barometerTimeToSave();
+
   if (bme280_ok) {
     BME280.getSensorData(temperature, hum, pressure);  // Get real data, ignore gas value
 
@@ -393,8 +397,10 @@ void getSensorData()
     if (humidity > 100) humidity = 100;
   }
 
-  saveHistoricalValues(pres, temp, humidity);
-  sdlogUpdate(pres, tempC, humidity);
+  if (doSave) {
+    saveHistoricalValues(pres, temp, humidity);
+    sdlogUpdate(pres, tempC, humidity);
+  }
 }
 
 //#########################################################################
@@ -509,6 +515,11 @@ void setup(void)
 
   //-- Carte SD : montee si l'enregistrement est active (voir page Reglages).
   sdlogInit();
+
+  //-- Recuperation de l'historique depuis la carte SD (si coupure de
+  //   courant et carte presente), puis recalage de la cadence.
+  if (sdlogRecover())
+    Serial.println("[sdlog] historique recupere depuis la carte SD");
 
   log_d("Free heap: %d", ESP.getFreeHeap());
 }

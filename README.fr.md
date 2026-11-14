@@ -69,8 +69,7 @@ carte, les valeurs en direct et le graphique sur la page web.*
   carte reste en anglais).
 - Page de réglages : langue, redémarrage de l'écran (sans perte d'historique),
   redémarrage de la carte, unité de température, débit NMEA 0183, correction
-  d'étalonnage de l'humidité, réseau WiFi, date et heure, enregistrement sur
-  carte SD.
+  d'étalonnage de l'humidité, réseau WiFi, date et heure, état de la carte SD.
 - Connexion au réseau domestique, avec point d'accès de secours automatique si
   le réseau est absent. Réglages conservés en NVS (mémoire flash) et rechargés
   au démarrage.
@@ -224,7 +223,7 @@ réseau domestique.
 | Page | Contenu |
 |---|---|
 | `/` | valeurs courantes, graphique d'historique, accès aux réglages |
-| `/params` | langue, écran, unités, sortie NMEA, réseau WiFi, date et heure, enregistrement SD |
+| `/params` | langue, écran, unités, sortie NMEA, réseau WiFi, date et heure, état de la carte SD |
 | `/wifi` | saisie du SSID et du mot de passe (redémarre la carte) |
 
 ### API JSON
@@ -257,14 +256,13 @@ Enregistrés dans la NVS (namespace `baro`), rechargés au démarrage :
 | `fah` | unité de température (Fahrenheit si vrai) |
 | `nmea` | débit NMEA 0183 (0 = N2K seul) |
 | `humcal` | correction d'étalonnage de l'humidité (en %) |
-| `log` | enregistrement sur carte SD (activé si vrai) |
 | `LastNodeAddress` | adresse de nœud NMEA 2000 |
 
 ## Carte SD
 
-Le slot microSD (TF) permet d'enregistrer les mesures. L'option est **coupée
-par défaut** et ne s'active que depuis la page Réglages de l'interface web
-(tuile « Enregistrement SD »).
+Le slot microSD (TF) permet d'archiver les mesures. **Dès qu'une carte est
+présente, l'enregistrement est actif automatiquement** (aucun réglage manuel) ;
+l'état est visible dans la page Réglages.
 
 - **Format** : carte **FAT32** (ou FAT16 pour les cartes ≤ 2 Go). exFAT et NTFS
   ne sont pas supportés.
@@ -275,13 +273,14 @@ par défaut** et ne s'active que depuis la page Réglages de l'interface web
   ```
   soit `date/heure (AAAAMMJJHHMM), pression (mb), température (°C), humidité (%)`,
   séparateur virgule, décimales avec point.
-- **Sans carte** : si l'option est activée alors qu'aucune carte n'est présente,
-  un message s'affiche et l'option est remise à off. Un retrait est détecté à la
-  prochaine écriture (sous 15 min) et désactive aussi l'option.
-- **Insertion / retrait à chaud** : la carte n'est pas détectée automatiquement.
-  Après l'insertion, il faut réactiver l'option dans la page Réglages.
 - **Carte pleine** : quand la carte atteint 90 % d'occupation, le fichier le plus
   ancien est supprimé (contrôle une fois par jour).
+- **Récupération après coupure de courant** : au démarrage, si une carte est
+  présente et que l'horloge a gardé l'heure, l'historique est reconstruit depuis
+  le CSV. Selon l'écart avec la dernière mesure : **moins de 15 min** → le
+  prochain enregistrement est calé sur le dernier ; **entre 15 min et 1 h** →
+  l'écart est simulé avec la dernière valeur ; **au-delà d'1 h** → l'historique
+  repart de zéro.
 - Le slot TF est relié en **SPI** (MOSI = GPIO 11, SCK = GPIO 12, MISO = GPIO 13),
   le chip-select étant la sortie **EXIO4** de l'expandeur CH422G.
 
