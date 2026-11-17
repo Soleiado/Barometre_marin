@@ -5,7 +5,7 @@ humidité), trois pages d'historique plein écran, interface web, réception de
 données de navigation **NMEA 2000** (vent, vitesse, profondeur, cap), sorties
 **NMEA 2000** et **NMEA 0183**, et application **Android** compagnon.
 
-**Langue :** Français | [English](README.md)
+**Langue :** Français | [English](README.md) | [Español](README.es.md)
 
 Le projet tourne sur une carte **Waveshare ESP32-S3-Touch-LCD-4.3B** (dalle
 couleurs 800 × 480, tactile capacitif GT911, horloge PCF85063A) associée à un
@@ -291,12 +291,25 @@ celles servies par le baromètre.
 Depuis le dossier `android/`, avec un JDK 17+ et le SDK Android :
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleDebug      # APK debug
+./gradlew assembleRelease    # APK release signé (nécessite keystore.properties)
 ```
 
-L'APK est produit dans `app/build/outputs/apk/debug/app-debug.apk`. On peut
-l'installer directement (`adb install` ou copie sur le téléphone). Le projet
-utilise Gradle 9.7.1 et AGP 9.4.1 (Kotlin intégré).
+Les APK sont produits dans `app/build/outputs/apk/`. L'APK debug peut être
+installé directement (`adb install` ou copie sur le téléphone). L'APK release
+est signé avec une clé privée référencée par un fichier local
+`keystore.properties` (non commité). Le projet utilise Gradle 9.7.1 et AGP 9.4.1
+(Kotlin intégré).
+
+### Téléchargement
+
+Un APK release signé, prêt à installer, est publié en
+[release GitHub](https://github.com/Soleiado/Barometre_marin/releases) :
+
+- [**Barometre-marin-v1.0.0.apk**](https://github.com/Soleiado/Barometre_marin/releases/download/v1.0.0/Barometre-marin-v1.0.0.apk)
+
+Il peut être nécessaire d'autoriser « installer des applications de sources
+inconnues » dans les réglages Android avant d'installer l'APK directement.
 
 ## Carte SD
 
@@ -374,7 +387,7 @@ build_opt.h                         option de compilation (canvas en PSRAM)
 extras/TFT_eSPI_User_Setup.h        configuration TFT_eSPI utilisée
 android/                            application Android compagnon (WebView, découverte mDNS)
 docs/                               captures d'ecran reprises par ce README
-README.md / README.fr.md            cette documentation, en anglais et en français
+README.md / README.fr.md / README.es.md  cette documentation, en anglais, français et espagnol
 ```
 
 ## Notes techniques

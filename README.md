@@ -5,7 +5,7 @@ three full-screen history pages, a web interface, **NMEA 2000** navigation data
 reception (wind, speed, depth, heading), **NMEA 2000** / **NMEA 0183** outputs,
 and a companion **Android** app.
 
-**Language:** [Français](README.fr.md) | English
+**Language:** [Français](README.fr.md) | English | [Español](README.es.md)
 
 The project runs on a **Waveshare ESP32-S3-Touch-LCD-4.3B** board (800 × 480
 colour panel, GT911 capacitive touch, PCF85063A clock) with a **BME280** sensor
@@ -287,12 +287,24 @@ barometer.
 From the `android/` folder, with a JDK 17+ and the Android SDK:
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleDebug      # debug APK
+./gradlew assembleRelease    # signed release APK (requires keystore.properties)
 ```
 
-The APK is produced at `app/build/outputs/apk/debug/app-debug.apk`. It can be
-installed directly (`adb install` or copy to the phone). The project uses Gradle
-9.7.1 and AGP 9.4.1 (built-in Kotlin).
+The APKs are produced in `app/build/outputs/apk/`. The debug APK can be
+installed directly (`adb install` or copy to the phone). The release APK is
+signed with a private key referenced by a local `keystore.properties` file (not
+committed). The project uses Gradle 9.7.1 and AGP 9.4.1 (built-in Kotlin).
+
+### Download
+
+A signed, ready-to-install release APK is published as a
+[GitHub release](https://github.com/Soleiado/Barometre_marin/releases):
+
+- [**Barometre-marin-v1.0.0.apk**](https://github.com/Soleiado/Barometre_marin/releases/download/v1.0.0/Barometre-marin-v1.0.0.apk)
+
+You may need to allow "install from unknown sources" in the Android settings
+before installing the APK directly.
 
 ## SD card
 
@@ -369,7 +381,7 @@ build_opt.h                         build option (canvas in PSRAM)
 extras/TFT_eSPI_User_Setup.h        TFT_eSPI configuration used
 android/                            companion Android app (WebView, mDNS discovery)
 docs/                               screenshots used by this documentation
-README.md / README.fr.md            this documentation, in English and French
+README.md / README.fr.md / README.es.md  this documentation, in English, French and Spanish
 ```
 
 ## Technical notes
