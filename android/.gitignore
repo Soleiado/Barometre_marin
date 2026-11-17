@@ -1,0 +1,10 @@
+# Gradle
+.gradle/
+build/
+
+# Fichiers locaux (chemins machine)
+local.properties
+
+# IDE
+.idea/
+*.iml

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Baromètre marin</string>
+    <string name="connect">Connexion</string>
+    <string name="address_hint">barometre.local ou adresse IP</string>
+    <string name="connect_title">Connexion au baromètre</string>
+    <string name="connect_message">Saisis l\'adresse du baromètre (barometre.local, ou une IP comme 192.168.0.22).</string>
+    <string name="cancel">Annuler</string>
+    <string name="ok">Connecter</string>
+    <string name="scanning">Recherche du baromètre…</string>
+    <string name="not_found">Baromètre introuvable. Vérifie le WiFi et l\'adresse.</string>
+</resources>
