@@ -5,6 +5,11 @@ build/
 # Fichiers locaux (chemins machine)
 local.properties
 
+# Signature release (secret local, ne pas committer)
+keystore.properties
+*.keystore
+*.jks
+
 # IDE
 .idea/
 *.iml
