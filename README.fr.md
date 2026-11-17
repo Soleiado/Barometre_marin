@@ -1,8 +1,9 @@
 # Barometre marin
 
 Baromètre tactile pour **ESP32-S3** : trois cadrans (pression, température,
-humidité), trois pages d'historique plein écran, interface web et sorties
-**NMEA 2000** et **NMEA 0183**.
+humidité), trois pages d'historique plein écran, interface web, réception de
+données de navigation **NMEA 2000** (vent, vitesse, profondeur, cap), sorties
+**NMEA 2000** et **NMEA 0183**, et application **Android** compagnon.
 
 **Langue :** Français | [English](README.md)
 
@@ -29,6 +30,7 @@ carte, les valeurs en direct et le graphique sur la page web.*
 - [Configuration de TFT_eSPI](#configuration-de-tft_espi)
 - [Utilisation de l'écran](#utilisation-de-lécran)
 - [Interface web](#interface-web)
+- [Application Android](#application-android)
 - [Carte SD](#carte-sd)
 - [Sorties NMEA](#sorties-nmea)
 - [Structure du projet](#structure-du-projet)
@@ -73,6 +75,10 @@ carte, les valeurs en direct et le graphique sur la page web.*
 - Connexion au réseau domestique, avec point d'accès de secours automatique si
   le réseau est absent. Réglages conservés en NVS (mémoire flash) et rechargés
   au démarrage.
+- Page **Navigation** (`/nav`) : cadrans circulaires de **vent** (vitesse et
+  direction, avec bascule vrai / apparent) et de **cap** (cap vrai / route
+  fond), vitesses fond et surface, profondeur — alimentés par les données
+  reçues du bus NMEA 2000.
 
 ### NMEA
 
@@ -83,6 +89,10 @@ carte, les valeurs en direct et le graphique sur la page web.*
   sortie désactivée.
 - Les valeurs NMEA restent toujours en unités métriques (°C, %, bar), même
   lorsque l'écran est réglé en Fahrenheit.
+- **Réception NMEA 2000** : le baromètre écoute le bus et met à jour les données
+  de navigation affichées sur la page « Navigation » — vent (vitesse et
+  direction, apparent et vrai), vitesse fond et surface, profondeur, cap et
+  route fond (voir « Sorties NMEA »).
 
 ## Matériel
 
@@ -223,6 +233,7 @@ réseau domestique.
 | Page | Contenu |
 |---|---|
 | `/` | valeurs courantes, graphique d'historique, accès aux réglages |
+| `/nav` | cadrans de vent et de cap, vitesses et profondeur (données reçues du bus NMEA 2000) |
 | `/params` | langue, écran, unités, sortie NMEA, réseau WiFi, date et heure, état de la carte SD |
 | `/wifi` | saisie du SSID et du mot de passe (redémarre la carte) |
 
@@ -231,6 +242,7 @@ réseau domestique.
 | Route | Méthode | Paramètres | Réponse |
 |---|---|---|---|
 | `/api/data` | GET | — | pression, température, humidité, unité, mode d'historique, heure, état WiFi |
+| `/api/nav` | GET | — | données de navigation reçues (vent, vitesses, profondeur, cap) |
 | `/api/history` | GET | `h=6\|12\|24\|48\|96` | séries pression / température / humidité, échelles, horodatage |
 | `/api/diag` | GET | — | diagnostic dalle et réseau (images, blocages, tas libre, PSRAM, RSSI) |
 | `/api/panel` | GET | `display=1`, `restart=1`, `reboot=1`, `pclk=<Hz>` | actions sur la dalle |
@@ -257,6 +269,34 @@ Enregistrés dans la NVS (namespace `baro`), rechargés au démarrage :
 | `nmea` | débit NMEA 0183 (0 = N2K seul) |
 | `humcal` | correction d'étalonnage de l'humidité (en %) |
 | `LastNodeAddress` | adresse de nœud NMEA 2000 |
+
+## Application Android
+
+Une application **Android** compagnon (dossier `android/`) affiche l'interface
+web du baromètre à l'identique : c'est une coquille native qui ouvre la page
+dans une WebView. Aucun graphique n'est recodé — les pages affichées sont
+celles servies par le baromètre.
+
+- **Découverte automatique** : au lancement, l'app cherche le baromètre sur le
+  réseau local (mDNS `barometre.local`). En cas d'échec, elle propose de saisir
+  l'adresse (nom ou IP).
+- **Adresse mémorisée** : la dernière adresse est conservée et reprise au
+  démarrage suivant ; un bouton « Connexion » relance la recherche ou permet de
+  changer de baromètre.
+- **Prérequis** : Android 8.0 ou plus récent (minSdk 26). Le baromètre et le
+  téléphone doivent être sur le même réseau local.
+
+### Compilation de l'application
+
+Depuis le dossier `android/`, avec un JDK 17+ et le SDK Android :
+
+```bash
+./gradlew assembleDebug
+```
+
+L'APK est produit dans `app/build/outputs/apk/debug/app-debug.apk`. On peut
+l'installer directement (`adb install` ou copie sur le téléphone). Le projet
+utilise Gradle 9.7.1 et AGP 9.4.1 (Kotlin intégré).
 
 ## Carte SD
 
@@ -297,6 +337,19 @@ Exemple de trame NMEA 0183 :
 $WIXDR,H,61.0,P,AirHumidity,C,19.2,C,AirTemp,P,1.0281,B,Barometer*03
 ```
 
+### Réception NMEA 2000
+
+Le baromètre écoute le bus et met à jour la page « Navigation » à partir de ces
+PGN :
+
+| PGN | Donnée |
+|---|---|
+| 130306 | vent (vitesse et direction, apparent et vrai) |
+| 128259 | vitesse surface (STW) |
+| 128267 | profondeur |
+| 129026 | cap fond et vitesse fond (COG / SOG) |
+| 127250 | cap vrai |
+
 ## Structure du projet
 
 ```
@@ -307,7 +360,8 @@ barometer.cpp / barometer.h         série d'historique, graphiques, page de mes
 menu.cpp / menu.h                   boutons et formulaires tactiles
 webui.cpp / webui.h                 serveur HTTP, pages HTML, API JSON
 nmea.cpp / nmea.h                   sortie NMEA 0183 (RS485)
-nmea2k.cpp / nmea2k.h               sortie NMEA 2000 (CAN / TWAI)
+nmea2k.cpp / nmea2k.h               sortie NMEA 2000 (CAN / TWAI) et réception des données de navigation
+navdata.cpp / navdata.h             données de navigation reçues du bus NMEA 2000
 sdlog.cpp / sdlog.h                 enregistrement des mesures sur la carte SD
 rtc_clock.cpp / rtc_clock.h         PCF85063A, DS3231 ou horloge logicielle
 bme280_local.cpp / bme280_local.h   pilote BME280 maison (I2C, formules Bosch)
@@ -318,6 +372,7 @@ theme.h                             palette du thème « instrument marin » (é
 esp_panel_board_supported_conf.h    sélection de la carte pour ESP32_Display_Panel
 build_opt.h                         option de compilation (canvas en PSRAM)
 extras/TFT_eSPI_User_Setup.h        configuration TFT_eSPI utilisée
+android/                            application Android compagnon (WebView, découverte mDNS)
 docs/                               captures d'ecran reprises par ce README
 README.md / README.fr.md            cette documentation, en anglais et en français
 ```

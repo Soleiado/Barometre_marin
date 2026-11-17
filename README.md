@@ -1,8 +1,9 @@
 # Marine barometer
 
 Touch barometer for **ESP32-S3**: three gauges (pressure, temperature, humidity),
-three full-screen history pages, a web interface and **NMEA 2000** / **NMEA 0183**
-outputs.
+three full-screen history pages, a web interface, **NMEA 2000** navigation data
+reception (wind, speed, depth, heading), **NMEA 2000** / **NMEA 0183** outputs,
+and a companion **Android** app.
 
 **Language:** [Français](README.fr.md) | English
 
@@ -29,6 +30,7 @@ values and chart on the web page.*
 - [TFT_eSPI configuration](#tft_espi-configuration)
 - [Using the display](#using-the-display)
 - [Web interface](#web-interface)
+- [Android app](#android-app)
 - [SD card](#sd-card)
 - [NMEA outputs](#nmea-outputs)
 - [Project structure](#project-structure)
@@ -72,6 +74,10 @@ values and chart on the web page.*
 - Connection to the home network, with an automatic fallback access point when
   the network is missing. Settings stored in NVS (flash memory) and reloaded at
   boot.
+- **Navigation** page (`/nav`): circular gauges for **wind** (speed and
+  direction, with a true / apparent switch) and **heading** (true heading /
+  course over ground), speed over ground and through water, and depth — fed by
+  the data received from the NMEA 2000 bus.
 
 ### NMEA
 
@@ -82,6 +88,10 @@ values and chart on the web page.*
   disabled.
 - NMEA values are always in metric units (°C, %, bar), even when the display is
   set to Fahrenheit.
+- **NMEA 2000 reception**: the barometer listens to the bus and updates the
+  navigation data shown on the "Navigation" page — wind (speed and direction,
+  apparent and true), speed over ground and through water, depth, heading and
+  course over ground (see "NMEA outputs").
 
 ## Hardware
 
@@ -220,6 +230,7 @@ the same page lets you enter the home network credentials.
 | Page | Content |
 |---|---|
 | `/` | current values, history chart, settings link |
+| `/nav` | wind and heading gauges, speeds and depth (data received from the NMEA 2000 bus) |
 | `/params` | language, display, units, NMEA output, WiFi network, date and time, SD card status |
 | `/wifi` | SSID and password entry (restarts the board) |
 
@@ -228,6 +239,7 @@ the same page lets you enter the home network credentials.
 | Route | Method | Parameters | Response |
 |---|---|---|---|
 | `/api/data` | GET | — | pressure, temperature, humidity, unit, history mode, time, WiFi status |
+| `/api/nav` | GET | — | navigation data received (wind, speeds, depth, heading) |
 | `/api/history` | GET | `h=6\|12\|24\|48\|96` | pressure / temperature / humidity series, scales, time stamp |
 | `/api/diag` | GET | — | panel and network diagnostics (frames, stalls, free heap, PSRAM, RSSI) |
 | `/api/panel` | GET | `display=1`, `restart=1`, `reboot=1`, `pclk=<Hz>` | panel actions |
@@ -254,6 +266,33 @@ Saved in NVS (namespace `baro`) and reloaded at boot:
 | `nmea` | NMEA 0183 baud rate (0 = N2K only) |
 | `humcal` | humidity calibration offset (in %) |
 | `LastNodeAddress` | NMEA 2000 node address |
+
+## Android app
+
+A companion **Android** app (in the `android/` folder) shows the barometer's web
+interface exactly as it is: it is a native shell that opens the page in a
+WebView. No chart is re-coded — the pages shown are those served by the
+barometer.
+
+- **Automatic discovery**: on launch, the app looks for the barometer on the
+  local network (mDNS `barometre.local`). If that fails, it offers to enter the
+  address (hostname or IP).
+- **Remembered address**: the last address is kept and reused at the next launch;
+  a "Connect" button restarts the search or switches barometers.
+- **Requirements**: Android 8.0 or newer (minSdk 26). The barometer and the
+  phone must be on the same local network.
+
+### Building the app
+
+From the `android/` folder, with a JDK 17+ and the Android SDK:
+
+```bash
+./gradlew assembleDebug
+```
+
+The APK is produced at `app/build/outputs/apk/debug/app-debug.apk`. It can be
+installed directly (`adb install` or copy to the phone). The project uses Gradle
+9.7.1 and AGP 9.4.1 (built-in Kotlin).
 
 ## SD card
 
@@ -293,6 +332,19 @@ Example NMEA 0183 sentence:
 $WIXDR,H,61.0,P,AirHumidity,C,19.2,C,AirTemp,P,1.0281,B,Barometer*03
 ```
 
+### NMEA 2000 reception
+
+The barometer listens to the bus and updates the "Navigation" page from these
+PGNs:
+
+| PGN | Data |
+|---|---|
+| 130306 | wind (speed and direction, apparent and true) |
+| 128259 | speed through water (STW) |
+| 128267 | depth |
+| 129026 | course over ground and speed over ground (COG / SOG) |
+| 127250 | true heading |
+
 ## Project structure
 
 ```
@@ -303,7 +355,8 @@ barometer.cpp / barometer.h         history series, charts, measurement page
 menu.cpp / menu.h                   touch buttons and forms
 webui.cpp / webui.h                 HTTP server, HTML pages, JSON API
 nmea.cpp / nmea.h                   NMEA 0183 output (RS485)
-nmea2k.cpp / nmea2k.h               NMEA 2000 output (CAN / TWAI)
+nmea2k.cpp / nmea2k.h               NMEA 2000 output (CAN / TWAI) and navigation data reception
+navdata.cpp / navdata.h             navigation data received from the NMEA 2000 bus
 sdlog.cpp / sdlog.h                 SD card measurement logging
 rtc_clock.cpp / rtc_clock.h         PCF85063A, DS3231 or software clock
 bme280_local.cpp / bme280_local.h   in-house BME280 driver (I2C, Bosch formulas)
@@ -314,6 +367,7 @@ theme.h                             "marine instrument" screen palette
 esp_panel_board_supported_conf.h    board selection for ESP32_Display_Panel
 build_opt.h                         build option (canvas in PSRAM)
 extras/TFT_eSPI_User_Setup.h        TFT_eSPI configuration used
+android/                            companion Android app (WebView, mDNS discovery)
 docs/                               screenshots used by this documentation
 README.md / README.fr.md            this documentation, in English and French
 ```
