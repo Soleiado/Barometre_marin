@@ -27,6 +27,7 @@
 #include "datetime_local.h"
 #include "rtc_clock.h"
 #include "sdlog.h"
+#include "navdata.h"
 
 // Mesures courantes et reglages, definis dans Barometre_marin.ino
 extern float   pres;
@@ -108,7 +109,9 @@ enum : uint8_t {
   TX_SSID, TX_PASS, TX_SAVE_RESTART, TX_WIFI_NOTE, TX_BACK_SHORT,
   TX_SSID_EMPTY, TX_SAVED_TITLE, TX_REBOOT_JOIN, TX_RECONNECT, TX_NADA,
   TX_SDLOG, TX_SDLOG_CARD, TX_SDLOG_PRESENT, TX_SDLOG_ABSENT,
-  TX_SDLOG_PCT, TX_SDLOG_ACTIVE, TX_SDLOG_NOTE, TX_HUMCAL, TX_HUMCAL_OFFSET
+  TX_SDLOG_PCT, TX_SDLOG_ACTIVE, TX_SDLOG_NOTE, TX_HUMCAL, TX_HUMCAL_OFFSET,
+  TX_NAV, TX_NAV_WIND, TX_NAV_WIND_TRUE, TX_NAV_WIND_APP, TX_NAV_HEADING,
+  TX_NAV_COG, TX_NAV_SOG, TX_NAV_STW, TX_NAV_DEPTH, TX_NAV_NODATA, TX_NAV_NOBUS
 };
 
 static const WebText kText[] = {
@@ -204,7 +207,18 @@ static const WebText kText[] = {
     "One AAAAMMJJ.csv file is created per day; above 90%% usage the oldest "
     "is deleted." },
   { "Etalonnage humidite",                        "Humidity calibration" },
-  { "Correction (%)",                             "Offset (%)" }
+  { "Correction (%)",                             "Offset (%)" },
+  { "Navigation",                                 "Navigation" },
+  { "Vent",                                       "Wind" },
+  { "Vent vrai",                                  "True wind" },
+  { "Vent apparent",                              "Apparent wind" },
+  { "Cap",                                        "Heading" },
+  { "Cap fond",                                   "Course over ground" },
+  { "Vitesse fond",                               "Speed over ground" },
+  { "Vitesse surface",                            "Speed through water" },
+  { "Profondeur",                                 "Depth" },
+  { "aucune donnee",                              "no data" },
+  { "bus NMEA 2000 silencieux",                   "NMEA 2000 bus silent" }
 };
 
 #define TEXT_COUNT  ((uint8_t)(sizeof(kText) / sizeof(kText[0])))
@@ -237,10 +251,11 @@ static const char PAGE_INDEX[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 :root{--bg:#0f172a;--card:#1e293b;--txt:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px 4px;max-width:900px;margin:0 auto}
+header{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:16px 20px 4px;max-width:900px;margin:0 auto}
 h1{font-size:20px;margin:0;font-weight:600}
 .btn{display:inline-block;background:var(--accent);color:#062133;font-weight:600;font-size:15px;
 text-decoration:none;padding:11px 20px;border-radius:11px;letter-spacing:.01em}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
 #clock{color:var(--dim);font-variant-numeric:tabular-nums;font-size:14px}
 main{max-width:900px;margin:0 auto;padding:0 16px 24px}
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
@@ -266,7 +281,7 @@ footer a{color:#94a3b8}
 </style>
 </head>
 <body>
-<header><h1>Barometre</h1><a class="btn" href="/params">{{SETTINGS}}</a></header>
+<header><h1>Barometre</h1><span class="btns"><a class="btn" href="/nav">{{NAV}}</a><a class="btn" href="/params">{{SETTINGS}}</a></span></header>
 <main>
 <div class="banner" id="banner">{{AP_HINT}} <a href="/wifi">{{CFG_WIFI}}</a></div>
 <section class="cards">
@@ -474,6 +489,157 @@ window.addEventListener('resize', draw);
 tick(); loadHist(6);
 setInterval(tick, 3000);
 setInterval(function(){ if (!document.hidden) loadHist(range); }, 60000);
+</script>
+</body>
+</html>)rawliteral";
+
+//---------------------------------------------------------------------
+// Page des donnees de navigation (NMEA 2000)
+//---------------------------------------------------------------------
+
+static const char PAGE_NAV[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{NAV}} - Barometre</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--txt:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px 4px;max-width:960px;margin:0 auto}
+h1{font-size:20px;margin:0;font-weight:600}
+.btn{display:inline-block;background:var(--accent);color:#062133;font-weight:600;font-size:15px;
+text-decoration:none;padding:11px 20px;border-radius:11px}
+main{max-width:960px;margin:0 auto;padding:0 16px 24px}
+.gauges{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+.card{background:var(--card);border-radius:14px;padding:14px 16px;text-align:center}
+.card canvas{width:100%;max-width:260px;aspect-ratio:1;display:block;margin:0 auto}
+.card .val{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:6px}
+.card .val small{font-size:13px;color:var(--dim);font-weight:400}
+.toggle{display:flex;gap:6px;justify-content:center;margin-top:8px}
+.toggle button{background:#0f172a;color:var(--dim);border:1px solid #334155;border-radius:9px;
+padding:7px 14px;font-size:13px;cursor:pointer}
+.toggle button.on{background:var(--accent);border-color:var(--accent);color:#062133;font-weight:600}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.num{background:var(--card);border-radius:14px;padding:16px}
+.num .lbl{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.07em}
+.num b{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;display:block;margin-top:6px}
+.num i{font-style:normal;color:var(--dim);font-size:13px}
+#state{color:var(--dim);font-size:13px;margin-top:12px;text-align:center}
+@media(max-width:640px){.gauges{grid-template-columns:1fr}.nums{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>{{NAV}}</h1><a class="btn" href="/">{{BACK}}</a></header>
+<main>
+<section class="gauges">
+  <div class="card">
+    <canvas id="wind"></canvas>
+    <div class="toggle">
+      <button id="wt" class="on">{{WIND_TRUE}}</button>
+      <button id="wa">{{WIND_APP}}</button>
+    </div>
+    <div class="val" id="windVal">-- <small>kn</small></div>
+  </div>
+  <div class="card">
+    <canvas id="heading"></canvas>
+    <div class="toggle">
+      <button id="hd" class="on">{{HEADING}}</button>
+      <button id="cg">{{COG}}</button>
+    </div>
+    <div class="val" id="hdgVal">-- <small>&deg;</small></div>
+  </div>
+</section>
+<section class="nums">
+  <div class="num"><div class="lbl">{{SOG}}</div><b id="sog">--</b><i>kn</i></div>
+  <div class="num"><div class="lbl">{{STW}}</div><b id="stw">--</b><i>kn</i></div>
+  <div class="num"><div class="lbl">{{DEPTH}}</div><b id="depth">--</b><i>m</i></div>
+</section>
+<div id="state">{{CONNECTING}}</div>
+</main>
+<script>
+var windMode = 'true', hdgMode = 'hdg', d = null;
+function $(id){ return document.getElementById(id); }
+function num(v, dec){ return v.toFixed(dec).replace('.', '{{DEC}}'); }
+
+function drawGauge(cv, angle, label){
+  var ctx = cv.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var S = cv.clientWidth;
+  cv.width = Math.round(S * dpr); cv.height = Math.round(S * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, S, S);
+
+  var cx = S / 2, cy = S / 2, r = S / 2 - 14;
+  var rad = (angle - 90) * Math.PI / 180;
+
+  for (var deg = 0; deg < 360; deg += 15) {
+    var a = (deg - 90) * Math.PI / 180;
+    var major = (deg % 90 === 0), mid = (deg % 30 === 0);
+    var r1 = r - (major ? 18 : mid ? 12 : 8);
+    ctx.strokeStyle = major ? '#64748b' : (mid ? '#475569' : '#243247');
+    ctx.lineWidth = major ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    ctx.stroke();
+    if (major) {
+      var lbl = deg === 0 ? 'N' : deg === 90 ? 'E' : deg === 180 ? 'S' : deg === 270 ? 'W' : String(deg);
+      ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '12px system-ui';
+      ctx.fillText(lbl, cx + Math.cos(a) * (r - 30), cy + Math.sin(a) * (r - 30));
+    }
+  }
+
+  // Aiguille
+  ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - Math.cos(rad) * 6, cy - Math.sin(rad) * 6);
+  ctx.lineTo(cx + Math.cos(rad) * (r - 24), cy + Math.sin(rad) * (r - 24));
+  ctx.stroke();
+  ctx.fillStyle = '#38bdf8';
+  ctx.beginPath(); ctx.arc(cx, cy, 5, 0, 6.2832); ctx.fill();
+
+  ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 22px system-ui';
+  ctx.fillText(label, cx, cy + 30);
+}
+
+function tick(){
+  fetch('/api/nav', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(j){
+    d = j;
+    var hasData = (j.updated > 0);
+    $('state').textContent = hasData ? '' : "{{NOBUS}}";
+
+    // Vent
+    var ws = windMode === 'true' ? j.wts : j.was;
+    var wd = windMode === 'true' ? j.wtd : j.wad;
+    drawGauge($('wind'), wd || 0, ws > 0 ? num(ws, 1) : '--');
+    $('windVal').innerHTML = (ws > 0 ? num(ws, 1) + ' <small>kn</small>' : '-- <small>kn</small>');
+
+    // Cap
+    var hd = hdgMode === 'hdg' ? j.hdg : j.cog;
+    drawGauge($('heading'), hd || 0, hd > 0 ? Math.round(hd) + '\u00B0' : '--');
+    $('hdgVal').innerHTML = (hd > 0 ? Math.round(hd) + ' <small>&deg;</small>' : '-- <small>&deg;</small>');
+
+    // Vitesses et profondeur
+    $('sog').textContent = j.sog > 0 ? num(j.sog, 1) : '--';
+    $('stw').textContent = j.stw > 0 ? num(j.stw, 1) : '--';
+    $('depth').textContent = j.depth > 0 ? num(j.depth, 1) : '--';
+  }).catch(function(){ $('state').textContent = "{{OFFLINE}}"; });
+}
+
+function setToggle(btnA, btnB, on){
+  btnA.className = on ? 'on' : '';
+  btnB.className = on ? '' : 'on';
+}
+$('wt').addEventListener('click', function(){ windMode = 'true'; setToggle($('wt'), $('wa'), true);  tick(); });
+$('wa').addEventListener('click', function(){ windMode = 'app';  setToggle($('wt'), $('wa'), false); tick(); });
+$('hd').addEventListener('click', function(){ hdgMode = 'hdg'; setToggle($('hd'), $('cg'), true);  tick(); });
+$('cg').addEventListener('click', function(){ hdgMode = 'cog'; setToggle($('hd'), $('cg'), false); tick(); });
+window.addEventListener('resize', function(){ if (d) tick(); });
+tick();
+setInterval(tick, 2000);
 </script>
 </body>
 </html>)rawliteral";
@@ -950,6 +1116,7 @@ static void handleRoot()
 
   page.replace("{{LANG}}",        langTag());
   page.replace("{{SETTINGS}}",    T(TX_SETTINGS));
+  page.replace("{{NAV}}",         T(TX_NAV));
   page.replace("{{AP_HINT}}",     T(TX_AP_HINT));
   page.replace("{{CFG_WIFI}}",    T(TX_CFG_WIFI));
   page.replace("{{PRESSURE}}",    T(TX_PRESSURE));
@@ -969,6 +1136,53 @@ static void handleRoot()
 static void handleNotFound()
 {
   server.send(404, "text/plain; charset=utf-8", T(TX_NADA));
+}
+
+//---------------------------------------------------------------------
+// Page des donnees de navigation
+//---------------------------------------------------------------------
+
+static void handleNav()
+{
+  String page = PAGE_NAV;
+
+  page.replace("{{LANG}}",       langTag());
+  page.replace("{{NAV}}",        T(TX_NAV));
+  page.replace("{{BACK}}",       T(TX_BACK_SHORT));
+  page.replace("{{WIND_TRUE}}",  T(TX_NAV_WIND_TRUE));
+  page.replace("{{WIND_APP}}",   T(TX_NAV_WIND_APP));
+  page.replace("{{HEADING}}",    T(TX_NAV_HEADING));
+  page.replace("{{COG}}",        T(TX_NAV_COG));
+  page.replace("{{SOG}}",        T(TX_NAV_SOG));
+  page.replace("{{STW}}",        T(TX_NAV_STW));
+  page.replace("{{DEPTH}}",      T(TX_NAV_DEPTH));
+  page.replace("{{CONNECTING}}", T(TX_CONNECTING));
+  page.replace("{{OFFLINE}}",    T(TX_OFFLINE));
+  page.replace("{{NOBUS}}",      T(TX_NAV_NOBUS));
+  page.replace("{{DEC}}",        T(TX_DEC));
+
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html; charset=utf-8", page);
+}
+
+static void handleNavApi()
+{
+  String j = "{";
+
+  j += "\"was\":" + String(nav.windSpeedApp, 1);
+  j += ",\"wad\":" + String((int)lroundf(nav.windAngleApp));
+  j += ",\"wts\":" + String(nav.windSpeedTrue, 1);
+  j += ",\"wtd\":" + String((int)lroundf(nav.windAngleTrue));
+  j += ",\"sog\":" + String(nav.sog, 1);
+  j += ",\"stw\":" + String(nav.stw, 1);
+  j += ",\"depth\":" + String(nav.depth, 1);
+  j += ",\"hdg\":" + String((int)lroundf(nav.heading));
+  j += ",\"cog\":" + String((int)lroundf(nav.cog));
+  j += ",\"updated\":" + String((unsigned)nav.updated);
+  j += "}";
+
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", j);
 }
 
 static void handleData()
@@ -1227,6 +1441,8 @@ void webInit()
 
 
   server.on("/",            handleRoot);
+  server.on("/nav",         handleNav);
+  server.on("/api/nav",     handleNavApi);
   server.on("/api/data",    handleData);
   server.on("/api/history", handleHistory);
   server.on("/api/diag",    handleDiag);

@@ -27,6 +27,7 @@
 
 #include "definition.h"
 #include "nmea2k.h"
+#include "navdata.h"
 
 // Pins CAN de la carte : a definir AVANT d'inclure le pilote
 #define ESP32_CAN_TX_PIN GPIO_NUM_15
@@ -67,6 +68,91 @@ const unsigned long TransmitMessages[] PROGMEM = {
 												  130316L, // Temperature
                                                   0
                                                  };
+
+// Messages ecoutes sur le bus (donnees de navigation)
+const unsigned long ReceiveMessages[] PROGMEM = {
+  130306L,  // Wind Data
+  128259L,  // Speed (water referenced)
+  128267L,  // Water Depth
+  129026L,  // COG & SOG (rapid update)
+  127250L,  // Vessel Heading
+  0
+};
+
+//---------------------------------------------------------------------
+// Recoit les PGN de navigation et met a jour les valeurs partagees.
+//---------------------------------------------------------------------
+
+static void navMessageHandler(const tN2kMsg &msg)
+{
+  switch (msg.PGN) {
+    case 130306L: {   // Wind Data
+      unsigned char sid;
+      double speed, angle;
+      tN2kWindReference ref;
+
+      if (ParseN2kPGN130306(msg, sid, speed, angle, ref)) {
+        if (ref == N2kWind_Apparent) {
+          nav.windSpeedApp = speed * 1.9438445;
+          nav.windAngleApp = angle * 180.0 / PI;
+        } else if (ref != N2kWind_Error && ref != N2kWind_Unavailable) {
+          nav.windSpeedTrue = speed * 1.9438445;
+          nav.windAngleTrue = angle * 180.0 / PI;
+        }
+        nav.updated = millis();
+      }
+      break;
+    }
+
+    case 128259L: {   // Speed (water referenced)
+      unsigned char sid;
+      double water, ground;
+      tN2kSpeedWaterReferenceType swrt;
+
+      if (ParseN2kPGN128259(msg, sid, water, ground, swrt)) {
+        nav.stw = water * 1.9438445;
+        nav.updated = millis();
+      }
+      break;
+    }
+
+    case 128267L: {   // Water Depth
+      unsigned char sid;
+      double depth, offset, range;
+
+      if (ParseN2kPGN128267(msg, sid, depth, offset, range)) {
+        nav.depth = depth;
+        nav.updated = millis();
+      }
+      break;
+    }
+
+    case 129026L: {   // COG & SOG
+      unsigned char sid;
+      tN2kHeadingReference ref;
+      double cog, sog;
+
+      if (ParseN2kPGN129026(msg, sid, ref, cog, sog)) {
+        nav.cog = cog * 180.0 / PI;
+        nav.sog = sog * 1.9438445;
+        nav.updated = millis();
+      }
+      break;
+    }
+
+    case 127250L: {   // Vessel Heading
+      unsigned char sid;
+      double heading, deviation, variation;
+      tN2kHeadingReference ref;
+
+      if (ParseN2kPGN127250(msg, sid, heading, deviation, variation, ref)) {
+        nav.heading = heading * 180.0 / PI;
+        nav.updated = millis();
+      }
+      break;
+    }
+  }
+}
 
 //---------------------------------------------------------------------
 
@@ -127,6 +213,8 @@ static void nmea2Ksetup()
 
   NMEA2000.SetMode(tNMEA2000::N2km_NodeOnly, NodeAddress);
   NMEA2000.ExtendTransmitMessages(TransmitMessages);
+  NMEA2000.ExtendReceiveMessages(ReceiveMessages);
+  NMEA2000.SetMsgHandler(navMessageHandler);
 
   bool opened = NMEA2000.Open();
 
